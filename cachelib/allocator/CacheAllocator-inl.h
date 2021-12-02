@@ -1045,35 +1045,60 @@ CacheAllocator<CacheTrait>::insertOrReplace(const ItemHandle& handle) {
 }
 
 template <typename CacheTrait>
-bool CacheAllocator<CacheTrait>::moveRegularItem(Item& oldItem,
+folly::Future<bool> CacheAllocator<CacheTrait>::moveRegularItem(
+                                                 Item& oldItem,
                                                  ItemHandle& newItemHdl) {
-  XDCHECK(config_.moveCb);
-  util::LatencyTracker tracker{stats_.moveRegularLatency_};
+  // XXX: how to capture params?
+  auto future = folly::via(executor.get(), [=]{
+    auto needsMoving = moveRegularItemPre(oldItem, newItemHd1);
+    if (!needsMoving)
+      return false;
 
-  if (!oldItem.isAccessible() || oldItem.isExpired()) {
-    return false;
+    // XXX: executor -> USE dedicated one?
+    auto move_future = folly::via(executor.get(), [&/*XXX*/]{
+      // Execute the move callback. We cannot make any guarantees about the
+      // consistency of the old item beyond this point, because the callback can
+      // do more than a simple memcpy() e.g. update external references. If there
+      // are any remaining handles to the old item, it is the caller's
+      // responsibility to invalidate them. The move can only fail after this
+      // statement if the old item has been removed or replaced, in which case it
+      // should be fine for it to be left in an inconsistent state.
+      config_.moveCb(oldItem, *newItemHdl, nullptr);
+    });
+
+    return move_future.then([](folly::Try<folly::Unit>&&){
+      return moveRegularItemPost(oldItem, newItemHdl);
+    });
   }
+}
 
-  XDCHECK_EQ(newItemHdl->getSize(), oldItem.getSize());
-  XDCHECK_EQ(reinterpret_cast<uintptr_t>(&getMMContainer(oldItem)),
-             reinterpret_cast<uintptr_t>(&getMMContainer(*newItemHdl)));
+template <typename CacheTrait>
+bool CacheAllocator<CacheTrait>::moveRegularItemPre(Item& oldItem,
+                                                 ItemHandle& newItemHdl) {
+    XDCHECK(config_.moveCb);
+    util::LatencyTracker tracker{stats_.moveRegularLatency_};
 
-  // take care of the flags before we expose the item to be accessed. this
-  // will ensure that when another thread removes the item from RAM, we issue
-  // a delete accordingly. See D7859775 for an example
-  if (oldItem.isNvmClean()) {
-    newItemHdl->markNvmClean();
-  }
+    if (!oldItem.isAccessible() || oldItem.isExpired()) {
+      return false;
+    }
 
-  // Execute the move callback. We cannot make any guarantees about the
-  // consistency of the old item beyond this point, because the callback can
-  // do more than a simple memcpy() e.g. update external references. If there
-  // are any remaining handles to the old item, it is the caller's
-  // responsibility to invalidate them. The move can only fail after this
-  // statement if the old item has been removed or replaced, in which case it
-  // should be fine for it to be left in an inconsistent state.
-  config_.moveCb(oldItem, *newItemHdl, nullptr);
+    XDCHECK_EQ(newItemHdl->getSize(), oldItem.getSize());
+    XDCHECK_EQ(reinterpret_cast<uintptr_t>(&getMMContainer(oldItem)),
+              reinterpret_cast<uintptr_t>(&getMMContainer(*newItemHdl)));
 
+    // take care of the flags before we expose the item to be accessed. this
+    // will ensure that when another thread removes the item from RAM, we issue
+    // a delete accordingly. See D7859775 for an example
+    if (oldItem.isNvmClean()) {
+      newItemHdl->markNvmClean();
+    }
+
+    return true;
+}
+
+template <typename CacheTrait>
+bool CacheAllocator<CacheTrait>::moveRegularItemPost(Item& oldItem,
+                                                 ItemHandle& newItemHdl) {
   // Inside the access container's lock, this checks if the old item is
   // accessible and its refcount is zero. If the item is not accessible,
   // there is no point to replace it since it had already been removed
@@ -2331,14 +2356,30 @@ void CacheAllocator<CacheTrait>::releaseSlabImpl(
   //  2. Under AC lock, acquire ownership of this active allocation
   //  3. If 2 is successful, Move or Evict
   //  4. Move on to the next item if current item is freed
+  std::vector<Future<bool>> futs;
   for (auto alloc : releaseContext.getActiveAllocations()) {
     // Need to mark an item for release before proceeding
     // If we can't mark as moving, it means the item is already freed
-    const bool isAlreadyFreed =
+    auto future = folly::via(executor.get(), [&]{
+      const bool isAlreadyFreed =
         !markMovingForSlabRelease(releaseContext, alloc, throttler);
-    if (isAlreadyFreed) {
-      continue;
-    }
+
+      if (isAlreadyFreed)
+        return {};
+
+      return *static_cast<Item*>(alloc);
+    });
+
+    auto moveForSlabReleaseFuture = isAlreadyFreedFuture
+      .thenValue([](bool isAlreadyFreed){
+        if (isAlreadyFreed)
+          return 
+
+        return moveForSlabRelease(releaseContext, item, throttler);
+      })
+      .thenValue([](bool isMoved){
+
+      })
 
     Item& item = *static_cast<Item*>(alloc);
 
@@ -2364,7 +2405,7 @@ void CacheAllocator<CacheTrait>::throttleWith(util::Throttler& t,
 }
 
 template <typename CacheTrait>
-bool CacheAllocator<CacheTrait>::moveForSlabRelease(
+folly::Future<bool> CacheAllocator<CacheTrait>::moveForSlabRelease(
     const SlabReleaseContext& ctx, Item& oldItem, util::Throttler& throttler) {
   if (!config_.moveCb) {
     return false;
@@ -2395,10 +2436,14 @@ bool CacheAllocator<CacheTrait>::moveForSlabRelease(
 
     // if we have a valid handle, try to move, if not, we retry.
     if (newItemHdl) {
-      isMoved = tryMovingForSlabRelease(oldItem, newItemHdl);
-      if (isMoved) {
-        break;
-      }
+      auto isMovedFuture = tryMovingForSlabRelease(oldItem, newItemHdl);
+      return isMovedFuture.thenValue([](bool isMoved) {
+        // XXX is it to early??
+        if (isMoved)
+          return true;
+
+        // XXXXX
+      })
     }
 
     throttleWith(throttler, [&] {
@@ -2513,7 +2558,7 @@ CacheAllocator<CacheTrait>::allocateNewItemForOldItem(const Item& oldItem) {
 }
 
 template <typename CacheTrait>
-bool CacheAllocator<CacheTrait>::tryMovingForSlabRelease(
+folly::Future<bool> CacheAllocator<CacheTrait>::tryMovingForSlabRelease(
     Item& oldItem, ItemHandle& newItemHdl) {
   // By holding onto a user-level synchronization object, we ensure moving
   // a regular item or chained item is synchronized with any potential
@@ -2530,7 +2575,7 @@ bool CacheAllocator<CacheTrait>::tryMovingForSlabRelease(
       if (oldItem.isOnlyMoving()) {
         // If chained item no longer has a refcount, its parent is already
         // being released, so we abort this try to moving.
-        return false;
+        return makeFuture(false);
       }
       syncObj = config_.movingSync(parentKey);
     }
@@ -2540,12 +2585,12 @@ bool CacheAllocator<CacheTrait>::tryMovingForSlabRelease(
     // 2. moveSync.isValid() == true meaning we've obtained the sync
     // 3. moveSync.isValid() == false meaning we need to abort and retry
     if (syncObj && !syncObj->isValid()) {
-      return false;
+      return makeFuture(false);
     }
   }
 
   return oldItem.isChainedItem()
-             ? moveChainedItem(oldItem.asChainedItem(), newItemHdl)
+             ? makeFuture(moveChainedItem(oldItem.asChainedItem(), newItemHdl))
              : moveRegularItem(oldItem, newItemHdl);
 }
 

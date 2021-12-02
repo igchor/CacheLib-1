@@ -1320,7 +1320,9 @@ class CacheAllocator : public CacheBase {
   //
   // @return true  If the move was completed, and the containers were updated
   //               successfully.
-  bool moveRegularItem(Item& oldItem, ItemHandle& newItemHdl);
+  folly::Future<bool> moveRegularItem(Item& oldItem, ItemHandle& newItemHdl);
+  bool moveRegularItemPre(Item& oldItem, ItemHandle& newItemHdl);
+  bool moveRegularItemPost(Item& oldItem, ItemHandle& newItemHdl);
 
   // Moves a chained item to a different slab. This should only be used during
   // slab release after the item's moving bit has been set. The user supplied
@@ -1874,6 +1876,8 @@ class CacheAllocator : public CacheBase {
 
   // indicates if the shutdown of cache is in progress or not
   std::atomic<bool> shutDownInProgress_{false};
+
+  std::unique_ptr<folly::Executor> executor;
 
   // END private members
 
