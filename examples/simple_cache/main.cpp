@@ -14,69 +14,27 @@
  * limitations under the License.
  */
 
-#include "cachelib/allocator/CacheAllocator.h"
-#include "folly/init/Init.h"
-
-namespace facebook {
-namespace cachelib_examples {
-using Cache = cachelib::LruAllocator; // or Lru2QAllocator, or TinyLFUAllocator
-using CacheConfig = typename Cache::Config;
-using CacheKey = typename Cache::Key;
-using CacheItemHandle = typename Cache::ItemHandle;
-
-// Global cache object and a default cache pool
-std::unique_ptr<Cache> gCache_;
-cachelib::PoolId defaultPool_;
-
-void initializeCache() {
-  CacheConfig config;
-  config
-      .setCacheSize(1 * 1024 * 1024 * 1024) // 1GB
-      .setCacheName("My Use Case")
-      .setAccessConfig(
-          {25 /* bucket power */, 10 /* lock power */}) // assuming caching 20
-                                                        // million items
-      .validate(); // will throw if bad config
-  gCache_ = std::make_unique<Cache>(config);
-  defaultPool_ =
-      gCache_->addPool("default", gCache_->getCacheMemoryStats().cacheSize);
-}
-
-void destroyCache() { gCache_.reset(); }
-
-CacheItemHandle get(CacheKey key) { return gCache_->find(key); }
-
-bool put(CacheKey key, const std::string& value) {
-  auto handle = gCache_->allocate(defaultPool_, key, value.size());
-  if (!handle) {
-    return false; // cache may fail to evict due to too many pending writes
-  }
-  std::memcpy(handle->getMemory(), value.data(), value.size());
-  gCache_->insertOrReplace(handle);
-  return true;
-}
-} // namespace cachelib_examples
-} // namespace facebook
-
-using namespace facebook::cachelib_examples;
+#include <iostream>
+#include "folly/futures/Future.h"
+#include <folly/executors/ThreadedExecutor.h>
+#include <folly/executors/CPUThreadPoolExecutor.h>
 
 int main(int argc, char** argv) {
-  folly::init(&argc, &argv);
+  // folly::ThreadedExecutor executor;
+  std::unique_ptr<folly::Executor> exc = std::unique_ptr<folly::Executor>(new folly::CPUThreadPoolExecutor(8));
+  
+  auto sf = folly::via(exc.get(), [](){
+    std::cout << "test" << std::endl;
+  }).then([](folly::Try<folly::Unit>&&){
+    std::cout << "some computation" << std::endl;
+    return true;
+  }).thenValue([](bool ret){
+    std::cout << "some other computation" << std::endl;
+  });
 
-  initializeCache();
+  auto x = folly::makeFuture(false);
 
-  // Use cache
-  {
-    auto res = put("key", "value");
-    std::ignore = res;
-    assert(res);
+  // auto ret = std::move(sf).get();
 
-    auto item = get("key");
-    folly::StringPiece sp{reinterpret_cast<const char*>(item->getMemory()),
-                          item->getSize()};
-    std::ignore = sp;
-    assert(sp == "value");
-  }
-
-  destroyCache();
+  // std::cout << ret << std::endl;
 }
