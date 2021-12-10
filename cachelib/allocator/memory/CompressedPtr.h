@@ -130,6 +130,51 @@ class CACHELIB_PACKED_ATTR CompressedPtr {
   friend SlabAllocator;
 };
 
+class DummyCompressedPtr {
+ public:
+  using PtrType = void*;
+  // Thrift doesn't support unsigned type
+  using SerializedPtrType = int64_t;
+
+  // Total number of bits to represent a CompressPtr.
+  static constexpr size_t kNumBits = NumBits<PtrType>::value;
+
+  // true if the compressed ptr expands to nullptr.
+  bool isNull() const noexcept { return ptr_ == nullptr; }
+
+  bool operator==(const PtrType ptr) const noexcept { return ptr_ == ptr; }
+  bool operator==(const DummyCompressedPtr ptr) const noexcept {
+    return ptr_ == ptr.ptr_;
+  }
+  bool operator!=(const PtrType ptr) const noexcept { return !(ptr == ptr_); }
+  // If the allocSize is smaller than this, then pointer compression is not
+  // going to work.
+  static constexpr uint32_t getMinAllocSize() noexcept {
+    return static_cast<uint32_t>(1) << (Slab::kMinAllocPower);
+  }
+
+  // maximum adressable memory for pointer compression to work.
+  static constexpr size_t getMaxAddressableSize() noexcept {
+    return std::numeric_limits<size_t>::max();
+  }
+
+  // default construct to nullptr.
+  DummyCompressedPtr() = default;
+
+  // Restore from serialization
+  explicit DummyCompressedPtr(SerializedPtrType ptr)
+      : ptr_(static_cast<PtrType>(ptr)) {}
+
+  SerializedPtrType saveState() const noexcept {
+    return static_cast<SerializedPtrType>(ptr_);
+  }
+
+  PtrType getRaw() const noexcept { return ptr_; }
+
+private:
+  PtrType ptr_;
+};
+
 template <typename PtrType, typename AllocatorT>
 class PtrCompressor {
  public:
@@ -155,6 +200,29 @@ class PtrCompressor {
  private:
   // memory allocator that does the pointer compression.
   const AllocatorT& allocator_;
+};
+
+template <typename PtrType>
+class DummyPtrCompressor {
+ public:
+  explicit DummyPtrCompressor() noexcept
+      : {}
+
+  const DummyCompressedPtr compress(const PtrType* uncompressed) const {
+    return {static_cast<void*>(uncompressed)};
+  }
+
+  PtrType* unCompress(const DummyCompressedPtr compressed) const {
+    return static_cast<PtrType*>(compressed.getRaw());
+  }
+
+  bool operator==(const DummyPtrCompressor& rhs) const noexcept {
+    return true;
+  }
+
+  bool operator!=(const DummyPtrCompressor& rhs) const noexcept {
+    return !(*this == rhs);
+  }
 };
 } // namespace cachelib
 } // namespace facebook

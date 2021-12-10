@@ -1673,7 +1673,8 @@ class CacheAllocator : public CacheBase {
   }
 
   typename Item::PtrCompressor createPtrCompressor() const {
-    return allocator_[0 /* TODO */]->createPtrCompressor<Item>();
+    XDCHECK_EQ(numTiers_, 1);
+    return allocator_[0]->createPtrCompressor<Item>();
   }
 
   // helper utility to throttle and optionally log.
