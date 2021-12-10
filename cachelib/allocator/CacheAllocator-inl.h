@@ -19,8 +19,33 @@
 #include "cachelib/allocator/CacheVersion.h"
 #include "cachelib/common/Utils.h"
 
+#include "Coroutines.hpp"
+
 namespace facebook {
 namespace cachelib {
+
+struct dml_copy_awaitable
+{
+	dml_copy_awaitable(dml::const_data_view src, dml::data_view dst, task_queue_type& task_queue): src(src), dst(dst), task_queue(task_queue) {
+	}
+
+	bool await_ready()
+	{
+		return false;
+	}
+
+	void await_suspend(std::coroutine_handle<> h)
+	{
+		auto handler = dml::submit<execution_path>(dml::mem_copy, src, dst);
+    task_queue.emplace(std::pair<handle_type, std::coroutine_handle<>>{std::move(handler), std::move(h)});
+	}
+
+	void await_resume() {}
+
+	dml::const_data_view src;
+  dml::data_view dst;
+  task_queue_type &task_queue;
+};
 
 template <typename CacheTrait>
 CacheAllocator<CacheTrait>::CacheAllocator(Config config)
@@ -1048,13 +1073,14 @@ CacheAllocator<CacheTrait>::insertOrReplace(const ItemHandle& handle) {
 }
 
 template <typename CacheTrait>
-bool CacheAllocator<CacheTrait>::moveRegularItem(Item& oldItem,
-                                                 ItemHandle& newItemHdl) {
+task<bool> CacheAllocator<CacheTrait>::moveRegularItem(Item& oldItem,
+                                                 ItemHandle& newItemHdl,
+                                                 task_queue_type& task_queue) {
   XDCHECK(config_.moveCb);
   util::LatencyTracker tracker{stats_.moveRegularLatency_};
 
   if (!oldItem.isAccessible() || oldItem.isExpired()) {
-    return false;
+    co_return false;
   }
 
   XDCHECK_EQ(newItemHdl->getSize(), oldItem.getSize());
@@ -1075,7 +1101,14 @@ bool CacheAllocator<CacheTrait>::moveRegularItem(Item& oldItem,
   // responsibility to invalidate them. The move can only fail after this
   // statement if the old item has been removed or replaced, in which case it
   // should be fine for it to be left in an inconsistent state.
-  config_.moveCb(oldItem, *newItemHdl, nullptr);
+  // config_.moveCb(oldItem, *newItemHdl, nullptr);
+
+  co_await config_.moveCb(oldItem, *newItemHdl, nullptr);
+
+  co_await dml_copy_awaitable(
+      dml::make_view(oldItem.getMemory(), oldItem.getSize()),
+      dml::make_view(newItemHdl->getMemory(), newItemHdl->getSize()),
+      task_queue);
 
   // Inside the access container's lock, this checks if the old item is
   // accessible and its refcount is zero. If the item is not accessible,
@@ -1086,14 +1119,14 @@ bool CacheAllocator<CacheTrait>::moveRegularItem(Item& oldItem,
   // it is unsafe to replace the old item with a new one, so we should
   // also abort.
   if (!accessContainer_->replaceIf(oldItem, *newItemHdl, itemMovingPredicate)) {
-    return false;
+    co_return false;
   }
 
   // Inside the MM container's lock, this checks if the old item exists to
   // make sure that no other thread removed it, and only then replaces it.
   if (!replaceInMMContainer(oldItem, *newItemHdl)) {
     accessContainer_->remove(*newItemHdl);
-    return false;
+    co_return false;
   }
 
   // Replacing into the MM container was successful, but someone could have
@@ -1101,7 +1134,7 @@ bool CacheAllocator<CacheTrait>::moveRegularItem(Item& oldItem,
   // replaceInMMContainer() operation, which would invalidate newItemHdl.
   if (!newItemHdl->isAccessible()) {
     removeFromMMContainer(*newItemHdl);
-    return false;
+    co_return false;
   }
 
   // no one can add or remove chained items at this point
@@ -1123,7 +1156,7 @@ bool CacheAllocator<CacheTrait>::moveRegularItem(Item& oldItem,
     XDCHECK(newItemHdl->hasChainedItem());
   }
   newItemHdl.unmarkNascent();
-  return true;
+  co_return true;
 }
 
 template <typename CacheTrait>
@@ -2251,7 +2284,23 @@ void CacheAllocator<CacheTrait>::releaseSlab(PoolId pid,
       return;
     }
 
-    releaseSlabImpl(releaseContext);
+    task_queue_type task_queue;
+    auto t = releaseSlabImpl(releaseContext, task_queue);
+
+    t.h.resume();
+    // XXX - can this be run in parallel?
+    while (!task_queue.size()) {
+      auto &p = task_queue.front();
+      auto &handler = p.first;
+      auto &cont = p.second;
+
+      auto result = handler.get();
+      if (result.status != dml::status_code::ok)
+        throw std::runtime_error("XXX");
+
+      cont.resume();
+    }
+
     if (!allocator_->allAllocsFreed(releaseContext)) {
       throw std::runtime_error(
           folly::sformat("Was not able to free all allocs. PoolId: {}, AC: {}",
@@ -2288,8 +2337,8 @@ SlabReleaseStats CacheAllocator<CacheTrait>::getSlabReleaseStats()
 }
 
 template <typename CacheTrait>
-void CacheAllocator<CacheTrait>::releaseSlabImpl(
-    const SlabReleaseContext& releaseContext) {
+task<bool> CacheAllocator<CacheTrait>::releaseSlabImpl(
+    const SlabReleaseContext& releaseContext, task_queue_type &task_queue) {
   util::Throttler throttler(config_.throttleConfig);
 
   // Active allocations need to be freed before we can release this slab
@@ -2310,7 +2359,7 @@ void CacheAllocator<CacheTrait>::releaseSlabImpl(
     Item& item = *static_cast<Item*>(alloc);
 
     // Try to move this item and make sure we can free the memory
-    const bool isMoved = moveForSlabRelease(releaseContext, item, throttler);
+    const bool isMoved = co_await moveForSlabRelease(releaseContext, item, throttler, task_queue);
 
     // if moving fails, evict it
     if (!isMoved) {
@@ -2318,6 +2367,8 @@ void CacheAllocator<CacheTrait>::releaseSlabImpl(
     }
     XDCHECK(allocator_->isAllocFreed(releaseContext, alloc));
   }
+
+  co_return true;
 }
 
 template <typename CacheTrait>
@@ -2331,10 +2382,10 @@ void CacheAllocator<CacheTrait>::throttleWith(util::Throttler& t,
 }
 
 template <typename CacheTrait>
-bool CacheAllocator<CacheTrait>::moveForSlabRelease(
-    const SlabReleaseContext& ctx, Item& oldItem, util::Throttler& throttler) {
+task<bool> CacheAllocator<CacheTrait>::moveForSlabRelease(
+    const SlabReleaseContext& ctx, Item& oldItem, util::Throttler& throttler, task_queue_type &task_queue) {
   if (!config_.moveCb) {
-    return false;
+    co_return false;
   }
 
   bool isMoved = false;
@@ -2352,7 +2403,7 @@ bool CacheAllocator<CacheTrait>::moveForSlabRelease(
       const auto res =
           releaseBackToAllocator(oldItem, RemoveContext::kNormal, false);
       XDCHECK(res == ReleaseRes::kReleased);
-      return true;
+      co_return true;
     }
 
     if (!newItemHdl) {
@@ -2362,7 +2413,7 @@ bool CacheAllocator<CacheTrait>::moveForSlabRelease(
 
     // if we have a valid handle, try to move, if not, we retry.
     if (newItemHdl) {
-      isMoved = tryMovingForSlabRelease(oldItem, newItemHdl);
+      isMoved = co_await tryMovingForSlabRelease(oldItem, newItemHdl, task_queue);
       if (isMoved) {
         break;
       }
@@ -2379,7 +2430,7 @@ bool CacheAllocator<CacheTrait>::moveForSlabRelease(
 
   // Return false if we've exhausted moving tries.
   if (!isMoved) {
-    return false;
+    co_return false;
   }
 
   // Since item has been moved, we can directly free it. We don't need to
@@ -2402,7 +2453,7 @@ bool CacheAllocator<CacheTrait>::moveForSlabRelease(
   (*stats_.fragmentationSize)[allocInfo.poolId][allocInfo.classId].sub(
       util::getFragmentation(*this, oldItem));
   stats_.numMoveSuccesses.inc();
-  return true;
+  co_return true;
 }
 
 template <typename CacheTrait>
@@ -2480,8 +2531,8 @@ CacheAllocator<CacheTrait>::allocateNewItemForOldItem(const Item& oldItem) {
 }
 
 template <typename CacheTrait>
-bool CacheAllocator<CacheTrait>::tryMovingForSlabRelease(
-    Item& oldItem, ItemHandle& newItemHdl) {
+task<bool> CacheAllocator<CacheTrait>::tryMovingForSlabRelease(
+    Item& oldItem, ItemHandle& newItemHdl, task_queue_type &task_queue) {
   // By holding onto a user-level synchronization object, we ensure moving
   // a regular item or chained item is synchronized with any potential
   // user-side mutation.
@@ -2497,7 +2548,7 @@ bool CacheAllocator<CacheTrait>::tryMovingForSlabRelease(
       if (oldItem.isOnlyMoving()) {
         // If chained item no longer has a refcount, its parent is already
         // being released, so we abort this try to moving.
-        return false;
+        co_return false;
       }
       syncObj = config_.movingSync(parentKey);
     }
@@ -2507,13 +2558,14 @@ bool CacheAllocator<CacheTrait>::tryMovingForSlabRelease(
     // 2. moveSync.isValid() == true meaning we've obtained the sync
     // 3. moveSync.isValid() == false meaning we need to abort and retry
     if (syncObj && !syncObj->isValid()) {
-      return false;
+      co_return false;
     }
   }
 
-  return oldItem.isChainedItem()
-             ? moveChainedItem(oldItem.asChainedItem(), newItemHdl)
-             : moveRegularItem(oldItem, newItemHdl);
+  if (oldItem.isChainedItem())
+    co_return moveChainedItem(oldItem.asChainedItem(), newItemHdl);
+  else
+    co_return co_await moveRegularItem(oldItem, newItemHdl, task_queue);
 }
 
 template <typename CacheTrait>

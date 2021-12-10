@@ -28,11 +28,15 @@
 #include <stdexcept>
 #include <utility>
 
+#include <dml/dml.hpp>
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wconversion"
 #include <folly/Format.h>
 #include <folly/Range.h>
 #pragma GCC diagnostic pop
+
+#include "cachelib/allocator/Coroutines.hpp"
 
 #include "cachelib/allocator/CCacheManager.h"
 #include "cachelib/allocator/Cache.h"
@@ -77,6 +81,10 @@
 
 namespace facebook {
 namespace cachelib {
+
+using execution_path = dml::software;
+using handle_type = decltype(dml::submit<execution_path>(dml::mem_copy, std::declval<dml::const_data_view>(), std::declval<dml::data_view>()));
+using task_queue_type = std::queue<std::pair<handle_type, std::coroutine_handle<>>>;
 
 template <typename AllocatorT>
 class FbInternalRuntimeUpdateWrapper;
@@ -1258,7 +1266,7 @@ class CacheAllocator : public CacheBase {
   //
   // @return true  If the move was completed, and the containers were updated
   //               successfully.
-  bool moveRegularItem(Item& oldItem, ItemHandle& newItemHdl);
+  task<bool> moveRegularItem(Item& oldItem, ItemHandle& newItemHdl, task_queue_type &task_queue);
 
   // Moves a chained item to a different slab. This should only be used during
   // slab release after the item's moving bit has been set. The user supplied
@@ -1492,7 +1500,7 @@ class CacheAllocator : public CacheBase {
                    const void* hint = nullptr) final;
 
   // @param releaseContext  slab release context
-  void releaseSlabImpl(const SlabReleaseContext& releaseContext);
+  task<bool> releaseSlabImpl(const SlabReleaseContext& releaseContext, task_queue_type &task_queue);
 
   // @return  true when successfully marked as moving,
   //          fasle when this item has already been freed
@@ -1510,9 +1518,9 @@ class CacheAllocator : public CacheBase {
   //
   // @return    true  if the item has been moved
   //            false if we have exhausted moving attempts
-  bool moveForSlabRelease(const SlabReleaseContext& ctx,
+  task<bool> moveForSlabRelease(const SlabReleaseContext& ctx,
                           Item& item,
-                          util::Throttler& throttler);
+                          util::Throttler& throttler, task_queue_type &task_queue);
 
   // "Move" (by copying) the content in this item to another memory
   // location by invoking the move callback.
@@ -1522,7 +1530,7 @@ class CacheAllocator : public CacheBase {
   //
   // @return    true  if the item has been moved
   //            false if we have exhausted moving attempts
-  bool tryMovingForSlabRelease(Item& item, ItemHandle& newItemHdl);
+  task<bool> tryMovingForSlabRelease(Item& item, ItemHandle& newItemHdl, task_queue_type &task_queue);
 
   // Evict an item from access and mm containers and
   // ensure it is safe for freeing.

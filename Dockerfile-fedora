@@ -1,0 +1,24 @@
+# Dockerfile.centos8
+# Command to build within intel network: sudo docker build --build-arg https_proxy=http://proxy-chain.intel.com:912 --build-arg http_proxy=http://proxy-chain.intel.com:912 -t cachelib:centos-8 -f Dockerfile.centos8 .
+# Command to run: sudo docker run --tmpfs /tmp -v /your/workspace/path/:/opt/workspace:z -w /opt/workspace/  -e http_proxy="http://proxy-chain.intel.com:912" -e https_proxy="http://proxy-chain.intel.com:912" -it cachelib:centos-8 /bin/bash
+
+FROM ghcr.io/pmem/pmemkv:fedora-34-latest
+
+USER root
+
+RUN dnf install -y \
+sudo \
+git \
+tzdata \
+vim \
+gdb \
+clang
+
+COPY contrib/prerequisites-fedora34.sh prerequisites-fedora34.sh
+RUN sed 's/sudo //' -i prerequisites-fedora34.sh
+RUN ./prerequisites-fedora34.sh
+
+COPY ./install-dml.sh install-dml.sh
+RUN ./install-dml.sh
+
+
