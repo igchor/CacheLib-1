@@ -969,6 +969,19 @@ bool CacheAllocator<CacheTrait>::replaceInMMContainer(Item& oldItem,
 }
 
 template <typename CacheTrait>
+bool CacheAllocator<CacheTrait>::replaceInMMContainerIt(EvictionIterator& oldItemIt,
+                                                      Item& newItem) {
+  auto& oldContainer = getMMContainer(*oldItemIt);
+  auto& newContainer = getMMContainer(newItem);
+
+  // This function is used for eviction across tiers
+  XDCHECK(&oldContainer != &newContainer);
+
+  oldContainer.remove(oldItemIt);
+  return newContainer.add(newItem);
+}
+
+template <typename CacheTrait>
 bool CacheAllocator<CacheTrait>::replaceChainedItemInMMContainer(
     Item& oldItem, Item& newItem) {
   auto& oldMMContainer = getMMContainer(oldItem);
@@ -1135,7 +1148,7 @@ bool CacheAllocator<CacheTrait>::addWaitContextForMovingItem(
 
 template <typename CacheTrait>
 bool CacheAllocator<CacheTrait>::moveRegularItemOnEviction(
-    Item& oldItem, ItemHandle& newItemHdl) {
+    Item& oldItem, ItemHandle& newItemHdl, EvictionIterator *oldItemIt) {
   // TODO: should we introduce new latency tracker. E.g. evictRegularLatency_
   // ??? util::LatencyTracker tracker{stats_.evictRegularLatency_};
 
@@ -1213,7 +1226,13 @@ bool CacheAllocator<CacheTrait>::moveRegularItemOnEviction(
 
   // Inside the MM container's lock, this checks if the old item exists to
   // make sure that no other thread removed it, and only then replaces it.
-  if (!replaceInMMContainer(oldItem, *newItemHdl)) {
+  int ret;
+  if (oldItemIt)
+    ret = replaceInMMContainerIt(*oldItemIt, *newItemHdl);
+  else
+    ret = replaceInMMContainer(oldItem, *newItemHdl);
+
+  if (!ret) {
     accessContainer_->remove(*newItemHdl);
     return false;
   }
@@ -1506,7 +1525,7 @@ bool CacheAllocator<CacheTrait>::shouldWriteToNvmCacheExclusive(
 template <typename CacheTrait>
 typename CacheAllocator<CacheTrait>::ItemHandle
 CacheAllocator<CacheTrait>::tryEvictToNextMemoryTier(
-    TierId tid, PoolId pid, Item& item) {
+    TierId tid, PoolId pid, Item& item, EvictionIterator *oldItemIt) {
   if(item.isExpired()) return acquire(&item);
 
   TierId nextTier = tid; // TODO - calculate this based on some admission policy
@@ -1521,7 +1540,7 @@ CacheAllocator<CacheTrait>::tryEvictToNextMemoryTier(
     if (newItemHdl) {
       XDCHECK_EQ(newItemHdl->getSize(), item.getSize());
 
-      if (moveRegularItemOnEviction(item, newItemHdl)) {
+      if (moveRegularItemOnEviction(item, newItemHdl, oldItemIt)) {
         return acquire(&item);
       }
     }
@@ -1535,7 +1554,7 @@ typename CacheAllocator<CacheTrait>::ItemHandle
 CacheAllocator<CacheTrait>::tryEvictToNextMemoryTier(Item& item) {
   auto tid = getTierId(item);
   auto pid = allocator_[tid]->getAllocInfo(item.getMemory()).poolId;
-  return tryEvictToNextMemoryTier(tid, pid, item);
+  return tryEvictToNextMemoryTier(tid, pid, item, nullptr);
 }
 
 template <typename CacheTrait>
@@ -1544,7 +1563,7 @@ CacheAllocator<CacheTrait>::advanceIteratorAndTryEvictRegularItem(
     TierId tid, PoolId pid, MMContainer& mmContainer, EvictionIterator& itr) {
   Item& item = *itr;
 
-  auto evictHandle = tryEvictToNextMemoryTier(tid, pid, item);
+  auto evictHandle = tryEvictToNextMemoryTier(tid, pid, item, &itr);
   if(evictHandle) return evictHandle;
 
   const bool evictToNvmCache = shouldWriteToNvmCache(item);
