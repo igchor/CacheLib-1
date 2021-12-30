@@ -6072,7 +6072,7 @@ class BaseAllocatorTest : public AllocatorTest<AllocatorT> {
     const static std::string data = "data";
 
     std::set<std::string> movedKeys;
-    auto moveCb = [&](const Item& oldItem, Item& newItem, Item* /* parentPtr */) {
+    auto moveCb = [&](Item& oldItem, Item& newItem, Item* /* parentPtr */) {
       std::memcpy(newItem.getWritableMemory(), oldItem.getMemory(), oldItem.getSize());
       movedKeys.insert(oldItem.getKey().str());
     };
@@ -6086,7 +6086,7 @@ class BaseAllocatorTest : public AllocatorTest<AllocatorT> {
       MemoryTierCacheConfig::fromShm().setRatio(1),
       MemoryTierCacheConfig::fromShm().setRatio(1),
     });
-    config.enableMovingOnSlabRelease(moveCb);
+    config.enableMultiTierMoving(moveCb);
 
     AllocatorT alloc(AllocatorT::SharedMemNew, config);
 
