@@ -1123,7 +1123,7 @@ CacheAllocator<CacheTrait>::insertOrReplace(const ItemHandle& handle) {
 
 template <typename CacheTrait>
 template <typename ItemPtr>
-bool CacheAllocator<CacheTrait>::moveRegularItem(ItemPtr& oldItemPtr,
+typename CacheAllocator<CacheTrait>::ItemHandle CacheAllocator<CacheTrait>::moveRegularItem(ItemPtr& oldItemPtr,
                                                  ItemHandle& newItemHdl, const MoveCb& moveCb) {
   XDCHECK(moveCb);
   util::LatencyTracker tracker{stats_.moveRegularLatency_};
@@ -1131,12 +1131,10 @@ bool CacheAllocator<CacheTrait>::moveRegularItem(ItemPtr& oldItemPtr,
   Item& oldItem = *oldItemPtr;
 
   if (!oldItem.isAccessible() || oldItem.isExpired()) {
-    return false;
+    return {};
   }
 
   XDCHECK_EQ(newItemHdl->getSize(), oldItem.getSize());
-  XDCHECK_EQ(reinterpret_cast<uintptr_t>(&getMMContainer(oldItem)),
-             reinterpret_cast<uintptr_t>(&getMMContainer(*newItemHdl)));
 
   // take care of the flags before we expose the item to be accessed. this
   // will ensure that when another thread removes the item from RAM, we issue
@@ -1152,7 +1150,7 @@ bool CacheAllocator<CacheTrait>::moveRegularItem(ItemPtr& oldItemPtr,
   // responsibility to invalidate them. The move can only fail after this
   // statement if the old item has been removed or replaced, in which case it
   // should be fine for it to be left in an inconsistent state.
-  config_.moveCb(oldItem, *newItemHdl, nullptr);
+  moveCb(oldItem, *newItemHdl, nullptr);
 
   // Inside the access container's lock, this checks if the old item is
   // accessible and its refcount is zero. If the item is not accessible,
@@ -1163,14 +1161,21 @@ bool CacheAllocator<CacheTrait>::moveRegularItem(ItemPtr& oldItemPtr,
   // it is unsafe to replace the old item with a new one, so we should
   // also abort.
   if (!accessContainer_->replaceIf(oldItem, *newItemHdl, itemMovingPredicate)) {
-    return false;
+    return {};
   }
+
+  // TODO: this should probably be returned from accessContainer_, otherwsie there
+  // might be some races.
+  // We are creating handle here because replaceInMMContainer advances oldItemPtr
+  // and we are loose track of that item.
+  auto oldHandle = acquire(&oldItem);
 
   // Inside the MM container's lock, this checks if the old item exists to
   // make sure that no other thread removed it, and only then replaces it.
-  if (!replaceInMMContainer(oldItem, *newItemHdl)) {
+  // We need to pass oldItemPtr to avoid deadlocks if oldItemPtr is evictionIterator
+  if (!replaceInMMContainer(oldItemPtr, *newItemHdl)) {
     accessContainer_->remove(*newItemHdl);
-    return false;
+    return {};
   }
 
   // Replacing into the MM container was successful, but someone could have
@@ -1178,13 +1183,13 @@ bool CacheAllocator<CacheTrait>::moveRegularItem(ItemPtr& oldItemPtr,
   // replaceInMMContainer() operation, which would invalidate newItemHdl.
   if (!newItemHdl->isAccessible()) {
     removeFromMMContainer(*newItemHdl);
-    return false;
+    return {};
   }
 
   // no one can add or remove chained items at this point
   if (oldItem.hasChainedItem()) {
     // safe to acquire handle for a moving Item
-    auto oldHandle = acquire(&oldItem);
+    // auto oldHandle = acquire(&oldItem);
     XDCHECK_EQ(1u, oldHandle->getRefCount()) << oldHandle->toString();
     XDCHECK(!newItemHdl->hasChainedItem()) << newItemHdl->toString();
     try {
@@ -1200,11 +1205,11 @@ bool CacheAllocator<CacheTrait>::moveRegularItem(ItemPtr& oldItemPtr,
     XDCHECK(newItemHdl->hasChainedItem());
   }
   newItemHdl.unmarkNascent();
-  return true;
+  return oldHandle;
 }
 
 template <typename CacheTrait>
-bool CacheAllocator<CacheTrait>::moveChainedItem(ChainedItem& oldItem,
+typename CacheAllocator<CacheTrait>::ItemHandle CacheAllocator<CacheTrait>::moveChainedItem(ChainedItem& oldItem,
                                                  ItemHandle& newItemHdl) {
   XDCHECK(config_.moveCb);
   util::LatencyTracker tracker{stats_.moveChainedLatency_};
@@ -1212,7 +1217,7 @@ bool CacheAllocator<CacheTrait>::moveChainedItem(ChainedItem& oldItem,
   // This item has been unlinked from its parent and we're the only
   // owner of it, so we're done here
   if (!oldItem.isInMMContainer() || oldItem.isOnlyMoving()) {
-    return false;
+    return {};
   }
 
   const auto parentKey = oldItem.getParentItem(compressor_).getKey();
@@ -1223,7 +1228,7 @@ bool CacheAllocator<CacheTrait>::moveChainedItem(ChainedItem& oldItem,
   auto parentHandle =
       validateAndGetParentHandleForChainedMoveLocked(oldItem, parentKey);
   if (!parentHandle) {
-    return false;
+    return {};
   }
 
   // once we have the moving sync and valid parent for the old item, check if
@@ -1233,7 +1238,7 @@ bool CacheAllocator<CacheTrait>::moveChainedItem(ChainedItem& oldItem,
           &newItemHdl->asChainedItem().getParentItem(compressor_)) !=
       reinterpret_cast<uintptr_t>(&parentHandle->asChainedItem())) {
     newItemHdl.reset();
-    return false;
+    return {};
   }
 
   XDCHECK_EQ(reinterpret_cast<uintptr_t>(
@@ -1243,7 +1248,7 @@ bool CacheAllocator<CacheTrait>::moveChainedItem(ChainedItem& oldItem,
   // In case someone else had removed this chained item from its parent by now
   // So we check again to see if the it has been unlinked from its parent
   if (!oldItem.isInMMContainer() || oldItem.isOnlyMoving()) {
-    return false;
+    return {};
   }
 
   auto parentPtr = parentHandle.get();
@@ -1261,7 +1266,7 @@ bool CacheAllocator<CacheTrait>::moveChainedItem(ChainedItem& oldItem,
   XDCHECK(oldItemHandle->isMoving());
   XDCHECK(!oldItemHandle->isInMMContainer());
 
-  return true;
+  return oldItemHandle;
 }
 
 template <typename CacheTrait>
@@ -1284,7 +1289,7 @@ CacheAllocator<CacheTrait>::tryMoveToNextMemoryTierOrEvict(
     
     if (toReleaseHandle == nullptr) {
       if (config_.disableEviction) {
-        return {};
+        return nullptr;
       }
 
       // for chained items, the ownership of the parent can change. We try to
@@ -1294,6 +1299,12 @@ CacheAllocator<CacheTrait>::tryMoveToNextMemoryTierOrEvict(
         itr->isChainedItem()
             ? advanceIteratorAndTryEvictChainedItem(tid, pid, itr)
             : advanceIteratorAndTryEvictRegularItem(tid, pid, mmContainer, itr);
+
+      if (toReleaseHandle) {
+        // we must be the last handle and for chained items, this will be
+        // the parent.
+        XDCHECK(toReleaseHandle.get() == candidate || candidate->isChainedItem());
+      }
     }
 
     if (toReleaseHandle) {
@@ -1307,9 +1318,6 @@ CacheAllocator<CacheTrait>::tryMoveToNextMemoryTierOrEvict(
       // again, which cannot be done unless we drop this iterator
       itr.destroy();
 
-      // we must be the last handle and for chained items, this will be
-      // the parent.
-      XDCHECK(toReleaseHandle.get() == candidate || candidate->isChainedItem());
       XDCHECK_EQ(1u, toReleaseHandle->getRefCount());
 
       // We manually release the item here because we don't want to
@@ -1411,13 +1419,12 @@ CacheAllocator<CacheTrait>::tryMoveItemToNextMemoryTier(
                      item->getCreationTime(),
                      item->getExpiryTime());
 
+    auto ptr = newItemHdl.get();
+
     if (newItemHdl) {
       XDCHECK_EQ(newItemHdl->getSize(), item->getSize());
 
-      if (tryMovingItem(item, newItemHdl, config_.multiTierMovingSync, config_.multiTierMoveCb)) {
-        // TODO: do we need additional checks here?
-        return acquire(item);
-      }
+      return tryMovingItem(item, newItemHdl, config_.multiTierMovingSync, config_.multiTierMoveCb);
     }
   }
 
@@ -2518,7 +2525,7 @@ bool CacheAllocator<CacheTrait>::moveForSlabRelease(
     return false;
   }
 
-  bool isMoved = false;
+  ItemHandle isMoved = {};
   auto startTime = util::getCurrentTimeSec();
   ItemHandle newItemHdl = allocateNewItemForOldItem(oldItem);
 
@@ -2668,7 +2675,7 @@ CacheAllocator<CacheTrait>::allocateNewItemForOldItem(const Item& oldItem) {
 
 template <typename CacheTrait>
 template <typename ItemPtr>
-bool CacheAllocator<CacheTrait>::tryMovingItem(
+typename CacheAllocator<CacheTrait>::ItemHandle CacheAllocator<CacheTrait>::tryMovingItem(
     ItemPtr& oldItemPtr, ItemHandle& newItemHdl, const ChainedItemMovingSync& movingSync, const MoveCb& moveCb) {
   Item& oldItem = *oldItemPtr;
     
@@ -2687,7 +2694,7 @@ bool CacheAllocator<CacheTrait>::tryMovingItem(
       if (oldItem.isOnlyMoving()) {
         // If chained item no longer has a refcount, its parent is already
         // being released, so we abort this try to moving.
-        return false;
+        return {};
       }
       syncObj = movingSync(parentKey);
     }
@@ -2697,13 +2704,13 @@ bool CacheAllocator<CacheTrait>::tryMovingItem(
     // 2. moveSync.isValid() == true meaning we've obtained the sync
     // 3. moveSync.isValid() == false meaning we need to abort and retry
     if (syncObj && !syncObj->isValid()) {
-      return false;
+      return {};
     }
   }
 
-  return oldItem.isChainedItem()
-             ? moveChainedItem(oldItem.asChainedItem(), newItemHdl)
-             : moveRegularItem(oldItemPtr, newItemHdl, moveCb);
+  return oldItem.isChainedItem() ?
+    moveChainedItem(oldItem.asChainedItem(), newItemHdl) :
+    moveRegularItem(oldItemPtr, newItemHdl, moveCb);
 }
 
 template <typename CacheTrait>

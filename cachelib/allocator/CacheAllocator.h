@@ -1285,7 +1285,7 @@ class CacheAllocator : public CacheBase {
   // @return true  If the move was completed, and the containers were updated
   //               successfully.
   template <typename ItemPtr>
-  bool moveRegularItem(ItemPtr& oldItemPtr, ItemHandle& newItemHdl, const MoveCb& moveCb);
+  ItemHandle moveRegularItem(ItemPtr& oldItemPtr, ItemHandle& newItemHdl, const MoveCb& moveCb);
 
   // Moves a chained item to a different slab. This should only be used during
   // slab release after the item's moving bit has been set. The user supplied
@@ -1301,7 +1301,7 @@ class CacheAllocator : public CacheBase {
   //
   // @return true  If the move was completed, and the containers were updated
   //               successfully.
-  bool moveChainedItem(ChainedItem& oldItem, ItemHandle& newItemHdl);
+  ItemHandle moveChainedItem(ChainedItem& oldItem, ItemHandle& newItemHdl);
 
   // Transfers the chain ownership from parent to newParent. Parent
   // will be unmarked as having chained allocations. Parent will not be null
@@ -1573,7 +1573,7 @@ class CacheAllocator : public CacheBase {
   // @return    true  if the item has been moved
   //            false if we have exhausted moving attempts
   template <typename ItemPtr>
-  bool tryMovingItem(ItemPtr& oldItemPtr, ItemHandle& newItemHdl, const ChainedItemMovingSync&, const MoveCb&);
+  ItemHandle tryMovingItem(ItemPtr& oldItemPtr, ItemHandle& newItemHdl, const ChainedItemMovingSync&, const MoveCb&);
 
   // Evict an item from access and mm containers and
   // ensure it is safe for freeing.
