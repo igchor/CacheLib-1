@@ -270,6 +270,12 @@ class CacheAllocatorConfig {
       ChainedItemMovingSync sync = {},
       uint32_t movingAttemptsLimit = 10);
 
+  // This enables moving items between memory tiers for multi-tier configuration.
+  CacheAllocatorConfig& enableMultiTierMoving(
+      MoveCb cb,
+      ChainedItemMovingSync sync = {},
+      uint32_t movingAttemptsLimit = 10);
+
   // This customizes how many items we try to evict before giving up.
   // We may fail to evict if someone else (another thread) is using an item.
   // Setting this to a high limit leads to a higher chance of successful
@@ -482,6 +488,8 @@ class CacheAllocatorConfig {
   // evict the item
   unsigned int movingTries{10};
 
+  unsigned int multiTierMovingTries{10};
+
   // Config that specifes how throttler will behave
   // How much time it will sleep and how long an interval between each sleep
   util::Throttler::Config throttleConfig{};
@@ -493,6 +501,8 @@ class CacheAllocatorConfig {
   // executing the moveCb. This is only needed when using and moving is
   // enabled for chained items.
   ChainedItemMovingSync movingSync{};
+
+  ChainedItemMovingSync multiTierMovingSync{};
 
   // determines how many locks we have for synchronizing chained items
   // add/pop and between moving during slab rebalancing
@@ -512,6 +522,8 @@ class CacheAllocatorConfig {
   // moveCb if needed to protect the data being moved with concurrent
   // readers.
   MoveCb moveCb{};
+
+  MoveCb multiTierMoveCb{};
 
   // custom user provided admission policy
   std::shared_ptr<NvmAdmissionPolicy<CacheT>> nvmCacheAP{nullptr};
@@ -963,6 +975,15 @@ CacheAllocatorConfig<T>& CacheAllocatorConfig<T>::enableMovingOnSlabRelease(
   moveCb = cb;
   movingSync = sync;
   movingTries = movingAttemptsLimit;
+  return *this;
+}
+
+template <typename T>
+CacheAllocatorConfig<T>& CacheAllocatorConfig<T>::enableMultiTierMoving(
+    MoveCb cb, ChainedItemMovingSync sync, uint32_t movingAttemptsLimit) {
+  multiTierMoveCb = cb;
+  multiTierMovingSync = sync;
+  multiTierMovingTries = movingAttemptsLimit;
   return *this;
 }
 

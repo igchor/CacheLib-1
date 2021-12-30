@@ -83,12 +83,6 @@ struct TestAllocator {
 
   void adjustHandleCountForThread_private(int i) { tlRef_.tlStats() += i; }
 
-  bool addWaitContextForMovingItem(
-      folly::StringPiece key,
-      std::shared_ptr<WaitContext<TestItemHandle>> waiter) {
-    return false;
-  }
-
   util::FastStats<int> tlRef_;
 };
 } // namespace
