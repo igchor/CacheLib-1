@@ -19,6 +19,8 @@
 #include "cachelib/allocator/CacheVersion.h"
 #include <folly/Random.h>
 
+#include "/var/vtune/vtune/2021.9.0/include/ittnotify.h"
+
 #include "cachelib/common/Utils.h"
 
 namespace facebook {
@@ -244,6 +246,11 @@ CacheAllocator<CacheTrait>::restoreCCacheManager(TierId tid) {
 
 template <typename CacheTrait>
 void CacheAllocator<CacheTrait>::initCommon(bool dramCacheAttached) {
+  domain = __itt_domain_create("MyTraces.MyDomain");
+  findTask = __itt_string_handle_create("find");
+  allocateTask = __itt_string_handle_create("allocate");
+  insertOrReplaceTask = __itt_string_handle_create("insertOrReplace");
+
   if (config_.isNvmCacheEnabled()) {
     if (config_.nvmCacheAP) {
       nvmAdmissionPolicy_ = config_.nvmCacheAP;
@@ -345,11 +352,17 @@ CacheAllocator<CacheTrait>::allocate(PoolId poolId,
                                      uint32_t size,
                                      uint32_t ttlSecs,
                                      uint32_t creationTime) {
+  
+  __itt_task_begin(domain, __itt_null, __itt_null, allocateTask);
+
   if (creationTime == 0) {
     creationTime = util::getCurrentTimeSec();
   }
-  return allocateInternal(poolId, key, size, creationTime,
+  auto handle = allocateInternal(poolId, key, size, creationTime,
                           ttlSecs == 0 ? 0 : creationTime + ttlSecs);
+
+  __itt_task_end(domain);
+  return handle;
 }
 
 template <typename CacheTrait>
@@ -1086,6 +1099,8 @@ CacheAllocator<CacheTrait>::insertOrReplace(const ItemHandle& handle) {
     throw std::invalid_argument("Handle is already accessible");
   }
 
+  __itt_task_begin(domain, __itt_null, __itt_null, insertOrReplaceTask);
+
   insertInMMContainer(*(handle.getInternal()));
   ItemHandle replaced;
   try {
@@ -1099,6 +1114,7 @@ CacheAllocator<CacheTrait>::insertOrReplace(const ItemHandle& handle) {
                            handle->getSize(),
                            handle->getConfiguredTTL().count());
     }
+     __itt_task_end(domain);
     throw;
   }
 
@@ -1126,6 +1142,8 @@ CacheAllocator<CacheTrait>::insertOrReplace(const ItemHandle& handle) {
                          result, handle->getSize(),
                          handle->getConfiguredTTL().count());
   }
+
+   __itt_task_end(domain);
 
   return replaced;
 }
@@ -1979,6 +1997,8 @@ CacheAllocator<CacheTrait>::findFast(typename Item::Key key, AccessMode mode) {
 template <typename CacheTrait>
 typename CacheAllocator<CacheTrait>::ItemHandle
 CacheAllocator<CacheTrait>::find(typename Item::Key key, AccessMode mode) {
+  __itt_task_begin(domain, __itt_null, __itt_null, findTask);
+
   auto handle = findFastImpl(key, mode);
 
   if (handle) {
@@ -1993,6 +2013,7 @@ CacheAllocator<CacheTrait>::find(typename Item::Key key, AccessMode mode) {
       }
       ItemHandle ret;
       ret.markExpired();
+      __itt_task_end(domain);
       return ret;
     }
 
@@ -2002,6 +2023,7 @@ CacheAllocator<CacheTrait>::find(typename Item::Key key, AccessMode mode) {
                            AllocatorApiResult::FOUND, handle->getSize(),
                            handle->getConfiguredTTL().count());
     }
+    __itt_task_end(domain);
     return handle;
   }
 

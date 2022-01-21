@@ -66,6 +66,8 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
 set(CACHELIB_HOME ${CMAKE_CURRENT_SOURCE_DIR})
 set(CACHELIB_BUILD ${CMAKE_CURRENT_BINARY_DIR})
 
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /var/vtune/vtune/2021.9.0/lib64/libittnotify.a")
+
 # Add root dir so qualified includes work.
 # E.g. #include "cachelib/allocator/foobar.h"
 include_directories(${CACHELIB_HOME}/..)
@@ -343,6 +345,12 @@ target_link_libraries(cachelib INTERFACE
      cachelib_navy
      cachelib_allocator
      )
+
+target_link_libraries(cachelib INTERFACE /var/vtune/vtune/2021.9.0/lib64/libittnotify.a)
+
+ SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} /var/vtune/vtune/2021.9.0/lib64/libittnotify.a")
+ SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} /var/vtune/vtune/2021.9.0/lib64/libittnotify.a")
+
 target_include_directories(
   cachelib
   INTERFACE

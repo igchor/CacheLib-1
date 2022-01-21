@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include "/var/vtune/vtune/2021.9.0/include/ittnotify.h"
+
 #include <folly/CPortability.h>
 #include <folly/Likely.h>
 #include <folly/ScopeGuard.h>
@@ -226,6 +228,12 @@ class CacheAllocator : public CacheBase {
   using AccessSerializationType = typename AccessType::SerializationType;
 
   using ShmManager = facebook::cachelib::ShmManager;
+
+  __itt_domain* domain;
+  __itt_string_handle* findTask;
+  __itt_string_handle* allocateTask;
+  __itt_string_handle* insertOrReplaceTask;
+
 
   // The shared memory segments that can be persisted and re-attached to
   enum SharedMemNewT { SharedMemNew };

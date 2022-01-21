@@ -39,8 +39,12 @@ target_link_libraries(cachelib_cachebench PUBLIC
   gflags
 )
 
+target_link_libraries(cachelib_cachebench PUBLIC -ldl /var/vtune/vtune/2021.9.0/lib64/libittnotify.a)
+
 add_executable (cachebench main.cpp)
 target_link_libraries(cachebench cachelib_cachebench)
+
+target_link_libraries(cachebench -ldl /var/vtune/vtune/2021.9.0/lib64/libittnotify.a)	
 
 install(
   TARGETS

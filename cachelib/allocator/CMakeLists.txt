@@ -63,7 +63,10 @@ target_link_libraries(cachelib_allocator PUBLIC
   cachelib_navy
   cachelib_common
   cachelib_shm
+  
   )
+
+target_link_libraries(cachelib_allocator PUBLIC -ldl /var/vtune/vtune/2021.9.0/lib64/libittnotify.a)
 
 install(TARGETS cachelib_allocator
         EXPORT cachelib-exports
