@@ -1,10 +1,18 @@
 {
   "cache_config": {
-    "cacheSizeMB": 24576,
+    "cacheSizeMB": 8192,
     "usePosixShm": true,
     "persistedCacheDir": "/tmp/mem-tier",
+    "lruUpdateOnRead": false,
+    "memoryTiers" : [
+      {
+        "ratio": 1,
+        "file": "/mnt/tmpfs_pmem/memory-mapped-tier"
+      }
+    ],
     "navyReaderThreads": 32,
     "navyWriterThreads": 32,
+    "nvmCachePaths": ["/dev/nvm0n1"],
     "navyBigHashBucketSize": 4096,
     "navyBigHashSizePct": 65,
     "navyBlockSize": 4096,
@@ -55,8 +63,6 @@
   },
   "test_config": {
     "validateValue": true,
-    "opDelayNs": 1000000,
-    "opDelayBatch": 3,
     "generator": "online",
     "enableLookaside": true,
     "keyPoolDistribution": [
@@ -65,7 +71,7 @@
     ],
     "numKeys": 4100000000,
     "numOps": 600000,
-    "numThreads": 36,
+    "numThreads": 24,
     "opPoolDistribution": [
       0.571,
       0.429

@@ -61,9 +61,6 @@
     ]
   },
   "test_config": {
-    "validateValue": true,
-    "opDelayNs": 1000000,
-    "opDelayBatch": 3,
     "generator": "online",
     "enableLookaside": true,
     "keyPoolDistribution": [
@@ -72,7 +69,7 @@
     ],
     "numKeys": 4100000000,
     "numOps": 600000,
-    "numThreads": 36,
+    "numThreads": 24,
     "opPoolDistribution": [
       0.571,
       0.429
