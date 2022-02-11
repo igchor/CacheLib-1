@@ -75,6 +75,7 @@ struct CacheConfig : public JSONConfig {
   uint64_t rebalanceMinSlabs{1};
   double rebalanceDiffRatio{0.25};
   bool moveOnSlabRelease{false};
+  bool multiTierMove{false};
 
   uint64_t htBucketPower{22}; // buckets in hash table
   uint64_t htLockPower{20};   // locks in hash table

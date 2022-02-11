@@ -70,6 +70,17 @@ Cache<Allocator>::Cache(const CacheConfig& config,
         movingSync);
   }
 
+  if (config_.multiTierMove) {
+    allocatorConfig_.enableMultiTierMoving(
+      [](Item& oldItem, Item& newItem, Item* parentPtr) {
+          XDCHECK(oldItem.isChainedItem() == (parentPtr != nullptr));
+          std::memcpy(newItem.getMemory(), oldItem.getMemory(),
+                      oldItem.getSize());
+          std::cout << "Tier move" << std::endl;
+        }
+    );
+  }
+
   if (config_.allocSizes.empty()) {
     XDCHECK(config_.minAllocSize >= sizeof(CacheValue));
     allocatorConfig_.setDefaultAllocSizes(util::generateAllocSizes(
