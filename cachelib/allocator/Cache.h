@@ -190,6 +190,8 @@ class CacheBase {
   // pool id
   virtual const ICompactCache& getCompactCache(PoolId pid) const = 0;
 
+  virtual void freeTopMemory(PoolId pid, ClassId cid) = 0;
+
  protected:
   // move bytes from one pool to another. The source pool should be at least
   // _bytes_ in size.

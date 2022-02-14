@@ -53,6 +53,7 @@ add_library (cachelib_allocator
     PoolOptimizer.cpp
     PoolOptimizeStrategy.cpp
     PoolRebalancer.cpp
+    TierOptimizer.cpp
     PoolResizer.cpp
     RebalanceStrategy.cpp
     SlabReleaseStats.cpp

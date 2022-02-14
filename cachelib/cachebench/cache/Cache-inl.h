@@ -76,7 +76,6 @@ Cache<Allocator>::Cache(const CacheConfig& config,
           XDCHECK(oldItem.isChainedItem() == (parentPtr != nullptr));
           std::memcpy(newItem.getMemory(), oldItem.getMemory(),
                       oldItem.getSize());
-          std::cout << "Tier move" << std::endl;
         }
     );
   }
@@ -275,6 +274,8 @@ Cache<Allocator>::Cache(const CacheConfig& config,
   } else {
     cache_ = std::make_unique<Allocator>(allocatorConfig_);
   }
+
+  cache_->startNewTierOptimizer(std::chrono::milliseconds(1));
 
   const size_t numBytes = cache_->getCacheMemoryStats().cacheSize;
   for (uint64_t i = 0; i < config_.numPools; ++i) {

@@ -345,6 +345,15 @@ CacheAllocator<CacheTrait>::allocate(PoolId poolId,
 }
 
 template <typename CacheTrait>
+void CacheAllocator<CacheTrait>::freeTopMemory(PoolId pid, ClassId cid)
+{
+  auto memory = tryMoveToNextMemoryTierOrEvict(0, pid, cid);
+  if (memory != nullptr) {
+      allocator_[0]->free(memory);
+  }
+}
+
+template <typename CacheTrait>
 typename CacheAllocator<CacheTrait>::ItemHandle
 CacheAllocator<CacheTrait>::allocateInternalTier(TierId tid,
                                              PoolId pid,
@@ -3610,6 +3619,11 @@ bool CacheAllocator<CacheTrait>::startNewWorker(
           interval.count());
   }
   return ret;
+}
+
+template <typename CacheTrait>
+bool CacheAllocator<CacheTrait>::startNewTierOptimizer(std::chrono::milliseconds interval) {
+    return startNewWorker("TierOptimizer", tierOptimizer_, interval);
 }
 
 template <typename CacheTrait>

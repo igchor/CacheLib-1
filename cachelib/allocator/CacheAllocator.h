@@ -75,6 +75,7 @@
 #include "cachelib/common/Throttler.h"
 #include "cachelib/common/Utils.h"
 #include "cachelib/shm/ShmManager.h"
+#include "cachelib/allocator/TierOptimizer.h"
 
 namespace facebook {
 namespace cachelib {
@@ -333,6 +334,8 @@ class CacheAllocator : public CacheBase {
                       uint32_t ttlSecs = 0,
                       uint32_t creationTime = 0);
 
+  void freeTopMemory(PoolId pid, ClassId cid);
+  bool startNewTierOptimizer(std::chrono::milliseconds interval);
   // Allocate a chained item
   //
   // The resulting chained item does not have a parent item and
@@ -1967,6 +1970,8 @@ class CacheAllocator : public CacheBase {
 
   // rebalancer for the pools
   std::unique_ptr<PoolRebalancer> poolRebalancer_;
+
+  std::unique_ptr<TierOptimizer> tierOptimizer_;
 
   // resizer for the pools.
   std::unique_ptr<PoolResizer> poolResizer_;
