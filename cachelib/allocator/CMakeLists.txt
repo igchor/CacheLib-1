@@ -35,8 +35,10 @@ add_library (cachelib_allocator
     CCacheManager.cpp
     ContainerTypes.cpp
     FreeMemStrategy.cpp
+    FreeThresholdStrategy.cpp
     HitsPerSlabStrategy.cpp
     LruTailAgeStrategy.cpp
+    KeepFreeStrategy.cpp
     MarginalHitsOptimizeStrategy.cpp
     MarginalHitsStrategy.cpp
     memory/AllocationClass.cpp
