@@ -325,6 +325,12 @@ void CacheAllocator<CacheTrait>::initWorkers() {
                           config_.poolOptimizeStrategy,
                           config_.ccacheOptimizeStepSizePercent);
   }
+
+  if (config_.backgroundEvictorEnabled()) {
+      startNewBackgroundEvictor(config_.backgroundEvictorInterval,
+                                config_.backgroundEvictorStrategy,
+                                0); //right now default to tier 0);
+  }
 }
 
 template <typename CacheTrait>
@@ -376,6 +382,14 @@ CacheAllocator<CacheTrait>::allocateInternalTier(TierId tid,
   //       Should we support eviction between memory tiers (e.g. from DRAM to PMEM)?
   if (memory == nullptr && !config_.disableEviction) {
     memory = findEviction(tid, pid, cid);
+
+    if (backgroundEvictor_ && config_.scheduleEviction) {
+      backgroundEvictor_->schedule(pid,cid);
+    }
+
+    if (backgroundEvictor_ && config_.wakeupBgEvictor) {
+      backgroundEvictor_->wakeUp();
+    }
   }
 
   ItemHandle handle;
@@ -3271,6 +3285,7 @@ bool CacheAllocator<CacheTrait>::stopWorkers(std::chrono::seconds timeout) {
   success &= stopPoolResizer(timeout);
   success &= stopMemMonitor(timeout);
   success &= stopReaper(timeout);
+  success &= stopBackgroundEvictor(timeout);
   return success;
 }
 
@@ -3551,6 +3566,7 @@ GlobalCacheStats CacheAllocator<CacheTrait>::getGlobalCacheStats() const {
   ret.nvmCacheEnabled = nvmCache_ ? nvmCache_->isEnabled() : false;
   ret.nvmUpTime = currTime - getNVMCacheCreationTime();
   ret.reaperStats = getReaperStats();
+  ret.evictionStats = getBackgroundEvictorStats();
   ret.numActiveHandles = getNumActiveHandles();
 
   return ret;
@@ -3649,6 +3665,7 @@ bool CacheAllocator<CacheTrait>::startNewPoolRebalancer(
                         freeAllocThreshold);
 }
 
+
 template <typename CacheTrait>
 bool CacheAllocator<CacheTrait>::startNewPoolResizer(
     std::chrono::milliseconds interval,
@@ -3687,6 +3704,14 @@ bool CacheAllocator<CacheTrait>::startNewReaper(
 }
 
 template <typename CacheTrait>
+bool CacheAllocator<CacheTrait>::startNewBackgroundEvictor(
+    std::chrono::milliseconds interval,
+    std::shared_ptr<BackgroundEvictorStrategy> strategy,
+    unsigned int tid ) {
+  return startNewWorker("BackgroundEvictor", backgroundEvictor_, interval, strategy, tid);
+}
+
+template <typename CacheTrait>
 bool CacheAllocator<CacheTrait>::stopPoolRebalancer(
     std::chrono::seconds timeout) {
   return stopWorker("PoolRebalancer", poolRebalancer_, timeout);
@@ -3711,6 +3736,12 @@ bool CacheAllocator<CacheTrait>::stopMemMonitor(std::chrono::seconds timeout) {
 template <typename CacheTrait>
 bool CacheAllocator<CacheTrait>::stopReaper(std::chrono::seconds timeout) {
   return stopWorker("Reaper", reaper_, timeout);
+}
+
+template <typename CacheTrait>
+bool CacheAllocator<CacheTrait>::stopBackgroundEvictor(
+    std::chrono::seconds timeout) {
+  return stopWorker("BackgroundEvictor", backgroundEvictor_, timeout);
 }
 
 template <typename CacheTrait>

@@ -36,7 +36,7 @@
 #include <folly/Format.h>
 #include <folly/Range.h>
 #pragma GCC diagnostic pop
-
+#include "cachelib/allocator/BackgroundEvictor.h"
 #include "cachelib/allocator/CCacheManager.h"
 #include "cachelib/allocator/Cache.h"
 #include "cachelib/allocator/CacheAllocatorConfig.h"
@@ -945,6 +945,9 @@ class CacheAllocator : public CacheBase {
   // @param reaperThrottleConfig    throttling config
   bool startNewReaper(std::chrono::milliseconds interval,
                       util::Throttler::Config reaperThrottleConfig);
+  
+  bool startNewBackgroundEvictor(std::chrono::milliseconds interval,
+                      std::shared_ptr<BackgroundEvictorStrategy> strategy, unsigned int tid);
 
   // Stop existing workers with a timeout
   bool stopPoolRebalancer(std::chrono::seconds timeout = std::chrono::seconds{
@@ -954,6 +957,7 @@ class CacheAllocator : public CacheBase {
                              0});
   bool stopMemMonitor(std::chrono::seconds timeout = std::chrono::seconds{0});
   bool stopReaper(std::chrono::seconds timeout = std::chrono::seconds{0});
+  bool stopBackgroundEvictor(std::chrono::seconds timeout = std::chrono::seconds{0});
 
   // Set pool optimization to either true or false
   //
@@ -987,6 +991,10 @@ class CacheAllocator : public CacheBase {
   // return the pool with speicified id.
   const MemoryPool& getPool(PoolId pid) const override final {
     return allocator_[currentTier()]->getPool(pid);
+  }
+  
+  const MemoryPool& getPoolByTid(PoolId pid, TierId tid) const override final {
+    return allocator_[tid]->getPool(pid);
   }
 
   // calculate the number of slabs to be advised/reclaimed in each pool
@@ -1032,6 +1040,17 @@ class CacheAllocator : public CacheBase {
   // returns the reaper stats
   ReaperStats getReaperStats() const {
     auto stats = reaper_ ? reaper_->getStats() : ReaperStats{};
+    return stats;
+  }
+  
+  // returns the background evictor
+  BackgroundEvictionStats getBackgroundEvictorStats() const {
+    auto stats = backgroundEvictor_ ? backgroundEvictor_->getStats() : BackgroundEvictionStats{};
+    return stats;
+  }
+  
+  std::map<uint32_t,uint64_t> getBackgroundEvictorClassStats() const {
+    auto stats = backgroundEvictor_ ? backgroundEvictor_->getClassStats() : std::map<uint32_t,uint64_t>();
     return stats;
   }
 
@@ -1731,6 +1750,65 @@ class CacheAllocator : public CacheBase {
     folly::annotate_ignore_thread_sanitizer_guard g(__FILE__, __LINE__);
     allocator_[currentTier()]->forEachAllocation(std::forward<Fn>(f));
   }
+  
+  // exposed for the background evictor to iterate through the memory and evict
+  // in batch. This should improve insertion path for tiered memory config
+  size_t traverseAndEvictItems(unsigned int tid, unsigned int pid, unsigned int cid, size_t batch) {
+    auto& mmContainer = getMMContainer(tid, pid, cid);
+    size_t evictions = 0;
+    size_t evictionCandidates = 0;
+    std::vector<Item*> candidates;
+    auto itr = mmContainer.getEvictionIterator();
+    while (evictionCandidates < batch && itr) {
+      Item* candidate = itr.get();
+      if (candidate == NULL) {
+          break;
+      }
+      mmContainer.remove(itr);
+      candidates.push_back(candidate);
+      evictionCandidates++;
+    }
+    itr.destroy();
+    for (Item *candidate : candidates) {
+      // for chained items, the ownership of the parent can change. We try to
+      // evict what we think as parent and see if the eviction of parent
+      // recycles the child we intend to.
+      
+      ItemHandle toReleaseHandle = tryEvictToNextMemoryTier(tid, pid, candidate);
+      if (!toReleaseHandle) {
+        mmContainer.add(*candidate);
+      } else {
+        if (toReleaseHandle->hasChainedItem()) {
+          (*stats_.chainedItemEvictions)[pid][cid].inc();
+        } else {
+          (*stats_.regularItemEvictions)[pid][cid].inc();
+        }
+        ++evictions;
+
+        // we must be the last handle and for chained items, this will be
+        // the parent.
+        XDCHECK(toReleaseHandle.get() == candidate || candidate->isChainedItem());
+        XDCHECK_EQ(1u, toReleaseHandle->getRefCount());
+
+        // We manually release the item here because we don't want to
+        // invoke the Item Handle's destructor which will be decrementing
+        // an already zero refcount, which will throw exception
+        auto& itemToRelease = *toReleaseHandle.release();
+
+        // Decrementing the refcount because we will call releaseBackToAllocator
+        const auto ref = decRef(itemToRelease);
+        XDCHECK_EQ(0u, ref);
+        
+        // check if by releasing the item we intend to, we actually
+        // recycle the candidate.
+        const auto res = releaseBackToAllocator(itemToRelease, RemoveContext::kEviction,
+                              /* isNascent */ true);
+        XDCHECK(res == ReleaseRes::kReleased);
+      } 
+    }
+
+    return evictions;
+  }
 
   // returns true if nvmcache is enabled and we should write this item to
   // nvmcache.
@@ -2039,6 +2117,9 @@ class CacheAllocator : public CacheBase {
 
   // free memory monitor
   std::unique_ptr<MemoryMonitor> memMonitor_;
+  
+  // background evictor
+  std::unique_ptr<BackgroundEvictor<CacheT>> backgroundEvictor_;
 
   // check whether a pool is a slabs pool
   std::array<bool, MemoryPoolManager::kMaxPools> isCompactCachePool_{};
@@ -2094,6 +2175,7 @@ class CacheAllocator : public CacheBase {
   // Make this friend to give access to acquire and release
   friend ReadHandle;
   friend ReaperAPIWrapper<CacheT>;
+  friend BackgroundEvictorAPIWrapper<CacheT>;
   friend class CacheAPIWrapperForNvm<CacheT>;
   friend class FbInternalRuntimeUpdateWrapper<CacheT>;
 
