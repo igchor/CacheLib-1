@@ -1,6 +1,6 @@
 in=`cat`
 
-git branch --show-current | awk '{print "branch",$1}'
+git branch --show-current | awk '{print "branch,"$1}'
 echo "${in}" | grep 'Hit Ratio' | sed 's/Hit Ratio[: ]*\([0-9.%]*\)/Hit Ratio,\1/'
 echo "${in}" | grep 'Cache Find API latency p50 ' | rev | cut -d " " -f 2 | rev | awk '{print "find p50,"$1}'
 echo "${in}" | grep 'Cache Find API latency p90 ' | rev | cut -d " " -f 2 | rev | awk '{print "find p90,"$1}'
