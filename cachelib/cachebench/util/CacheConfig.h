@@ -290,6 +290,7 @@ struct CacheConfig : public JSONConfig {
 
   bool wakeupBgEvictor {false};
   bool scheduleEviction {false};
+  bool insertTopTier{true};
 
   explicit CacheConfig(const folly::dynamic& configJson);
 

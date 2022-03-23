@@ -106,6 +106,7 @@ CacheConfig::CacheConfig(const folly::dynamic& configJson) {
   JSONSetVal(configJson, scheduleEviction);
   JSONSetVal(configJson, wakeupBgEvictor);
 
+  JSONSetVal(configJson, insertTopTier);
   if (configJson.count("memoryTiers")) {
     for (auto& it : configJson["memoryTiers"]) {
       memoryTierConfigs.push_back(MemoryTierConfig(it).getMemoryTierCacheConfig());
