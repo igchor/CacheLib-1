@@ -35,6 +35,8 @@ struct Stats {
   uint64_t numBackgroundEvictions{0};
   uint64_t numBackgroundEvictionsFromSchedule{0};
   uint64_t numBackgroundEvictorRuns{0};
+  uint64_t numPromotedItemsTotal{0};
+  uint64_t numPromotedItemsSuccess{0};
 
   uint64_t numCacheGets{0};
   uint64_t numCacheGetMiss{0};
@@ -122,7 +124,10 @@ struct Stats {
 
     out << folly::sformat("Background Tier 0 Evictions : {:,}", numBackgroundEvictions) << std::endl;
     out << folly::sformat("Background Tier 0 Evictions from schedule() : {:,}", numBackgroundEvictionsFromSchedule) << std::endl;
-    
+
+    out << folly::sformat("Background Tier 0 Promotions Total : {:,}", numPromotedItemsTotal) << std::endl;
+    out << folly::sformat("Background Tier 0 Promotions Success : {:,}", numPromotedItemsSuccess) << std::endl;
+
     out << folly::sformat("Background Tier 0 Eviction Runs : {:,}", numBackgroundEvictorRuns) << std::endl;
 
     if (numCacheGets > 0) {

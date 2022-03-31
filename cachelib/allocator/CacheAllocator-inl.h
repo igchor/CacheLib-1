@@ -385,7 +385,7 @@ CacheAllocator<CacheTrait>::allocateInternalTier(TierId tid,
     memory = findEviction(tid, pid, cid);
 
     if (backgroundEvictor_ && config_.scheduleEviction) {
-      backgroundEvictor_->schedule(pid,cid);
+      backgroundEvictor_->scheduleEviction(pid,cid);
     }
 
     if (backgroundEvictor_ && config_.wakeupBgEvictor) {
@@ -442,7 +442,12 @@ CacheAllocator<CacheTrait>::allocateInternal(PoolId pid,
     //       Should we support eviction between memory tiers (e.g. from DRAM to PMEM)?
     bool evict = (config_.insertTopTier || tid == numTiers_ - 1) && !config_.disableEviction;
     auto handle = allocateInternalTier(tid, pid, key, size, creationTime, expiryTime, evict);
-    if (handle) return handle;
+    if (handle) {
+      if (tid != 0 && backgroundEvictor_) {
+        backgroundEvictor_->schedulePromotion(handle);
+      }
+      return handle;
+    }
   }
   return {};
 }
@@ -1725,8 +1730,7 @@ CacheAllocator<CacheTrait>::tryPromoteToNextMemoryTier(ItemHandle& item) {
   auto pid = allocator_[tid]->getAllocInfo(item->getMemory()).poolId;
 
   TierId nextTier = tid; // TODO - calculate this based on some admission policy
-  if (nextTier-- > 0) { // try to evict down to the next memory tiers
-    // allocateInternal might trigger another eviction
+  if (nextTier-- > 0) {
     auto newItemHdl = allocateInternalTier(nextTier, pid,
                      item->getKey(),
                      item->getSize(),
@@ -1736,12 +1740,11 @@ CacheAllocator<CacheTrait>::tryPromoteToNextMemoryTier(ItemHandle& item) {
 
     if (newItemHdl) {
       XDCHECK_EQ(newItemHdl->getSize(), item->getSize());
-
       return moveRegularItemOnPromotion(item, newItemHdl);
     }
   }
 
-  return std::move(item);
+  return {};
 }
 
 template <typename CacheTrait>
@@ -2148,8 +2151,6 @@ CacheAllocator<CacheTrait>::findFastImpl(typename Item::Key key,
                                          AccessMode mode) {
   auto handle = findInternal(key);
 
-  handle = tryPromoteToNextMemoryTier(handle);
-
   stats_.numCacheGets.inc();
   if (UNLIKELY(!handle)) {
     stats_.numCacheGetMiss.inc();
@@ -2157,6 +2158,7 @@ CacheAllocator<CacheTrait>::findFastImpl(typename Item::Key key,
   }
 
   markUseful(handle, mode);
+
   return handle;
 }
 
@@ -2255,10 +2257,10 @@ void CacheAllocator<CacheTrait>::markUseful(const ItemHandle& handle,
 
   // if parent is not recorded, skip children as well when the config is set
   if (LIKELY(!item.hasChainedItem() ||
-             (!recorded && config_.isSkipPromoteChildrenWhenParentFailed()))) {
+            (!recorded && config_.isSkipPromoteChildrenWhenParentFailed()))) {
     return;
   }
-
+    
   forEachChainedItem(item, [this, mode](ChainedItem& chainedItem) {
     recordAccessInMMContainer(chainedItem, mode);
   });

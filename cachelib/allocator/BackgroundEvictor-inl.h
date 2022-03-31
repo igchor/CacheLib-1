@@ -35,22 +35,38 @@ BackgroundEvictor<CacheT>::~BackgroundEvictor() { stop(std::chrono::seconds(0));
 template <typename CacheT>
 void BackgroundEvictor<CacheT>::work() {
   try {
-    if (!tasks_.empty()) {
+    if (!tasks_.empty() || !promotionTasks_.empty()) {
       while (auto entry = tasks_.try_dequeue()) {
         auto [pid, cid] = entry.value();
         auto batch = strategy_->calculateBatchSize(cache_, tid_, pid, cid);
+        if (!batch)
+          continue;
+
         auto evicted = BackgroundEvictorAPIWrapper<CacheT>::traverseAndEvictItems(cache_,
                 tid_,pid,cid,batch);
         numEvictedItemsFromSchedule_.fetch_add(1, std::memory_order_relaxed);
         runCount_.fetch_add(1, std::memory_order_relaxed);
       }
-    } else {
-      for (const auto pid : cache_.getRegularPoolIds()) {
-        //check if the pool is full - probably should be if tier is full
-        if (cache_.getPoolByTid(pid,tid_).allSlabsAllocated()) {
-          checkAndRun(pid);
+
+      while (auto entry = promotionTasks_.try_dequeue()) {
+        auto handle = std::move(entry).value();
+        numPromotedItemsTotal_.fetch_add(1, std::memory_order_relaxed);
+        if (!cache_.tryPromoteToNextMemoryTier(handle)) {
+            numPromotedItemsSuccess_.fetch_add(1, std::memory_order_relaxed);
+          // This could be useful for finds, not for allocations
+          // cache_.markUseful(handle, AccessMode::kRead); // XXX: access mode?
         }
+
+
+        // XXX: swap items for eviction/promotion instead of handling them independently
       }
+    } else {
+      // for (const auto pid : cache_.getRegularPoolIds()) {
+      //   //check if the pool is full - probably should be if tier is full
+      //   if (cache_.getPoolByTid(pid,tid_).allSlabsAllocated()) {
+      //     checkAndRun(pid);
+      //   }
+      // }
     }
   } catch (const std::exception& ex) {
     XLOGF(ERR, "BackgroundEvictor interrupted due to exception: {}", ex.what());
@@ -82,6 +98,8 @@ BackgroundEvictorStats BackgroundEvictor<CacheT>::getStats() const noexcept {
   stats.numEvictedItems = numEvictedItems_.load(std::memory_order_relaxed);
   stats.numTraversals = runCount_.load(std::memory_order_relaxed);
   stats.numEvictedItemsFromSchedule = numEvictedItemsFromSchedule_.load(std::memory_order_relaxed);
+  stats.numPromotedItemsTotal = numPromotedItemsTotal_.load(std::memory_order_relaxed);
+  stats.numPromotedItemsSuccess = numPromotedItemsSuccess_.load(std::memory_order_relaxed);
   return stats;
 }
 

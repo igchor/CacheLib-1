@@ -1218,6 +1218,8 @@ class CacheAllocator : public CacheBase {
                 "alloc_ incorrectly arranged");
 #pragma GCC diagnostic pop
 
+  ItemHandle tryPromoteToNextMemoryTier(ItemHandle& item);
+
  private:
   // wrapper around Item's refcount and active handle tracking
   FOLLY_ALWAYS_INLINE void incRef(Item& it);
@@ -1607,8 +1609,6 @@ class CacheAllocator : public CacheBase {
   //         handle to the item. On failure an empty handle.
   template <typename ItemPtr>
   ItemHandle tryEvictToNextMemoryTier(TierId tid, PoolId pid, ItemPtr& item);
-
-  ItemHandle tryPromoteToNextMemoryTier(ItemHandle& item);
 
   // Try to move the item down to the next memory tier
   //

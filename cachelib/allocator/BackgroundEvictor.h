@@ -31,7 +31,6 @@ namespace cachelib {
 // needed for the eviction.
 template <typename C>
 struct BackgroundEvictorAPIWrapper {
-
   static size_t traverseAndEvictItems(C& cache,
           unsigned int tid, unsigned int pid, unsigned int cid, size_t batch) {
     return cache.traverseAndEvictItems(tid,pid,cid,batch);
@@ -55,8 +54,12 @@ class BackgroundEvictor : public PeriodicWorker {
 
   ~BackgroundEvictor() override;
   
-  void schedule(size_t pid, size_t cid) {
+  void scheduleEviction(size_t pid, size_t cid) {
       tasks_.enqueue(std::make_pair(pid,cid));
+  }
+  bool schedulePromotion(const typename CacheT::ItemHandle& handle) {
+    promotionTasks_.enqueue(std::move(handle.clone()));
+    return true; // XXX: use bounded queue and return false on fail
   }
   BackgroundEvictorStats getStats() const noexcept;
 
@@ -69,6 +72,7 @@ class BackgroundEvictor : public PeriodicWorker {
   std::shared_ptr<BackgroundEvictorStrategy> strategy_;
   unsigned int tid_;
   folly::UMPSCQueue<std::pair<size_t,size_t>,true> tasks_;
+  folly::UMPSCQueue<typename CacheT::ItemHandle,true> promotionTasks_;
 
   // implements the actual logic of running the background evictor
   void work() override final;
@@ -76,6 +80,8 @@ class BackgroundEvictor : public PeriodicWorker {
   
   std::atomic<uint64_t> numEvictedItems_{0};
   std::atomic<uint64_t> numEvictedItemsFromSchedule_{0};
+  std::atomic<uint64_t> numPromotedItemsTotal_{0};
+  std::atomic<uint64_t> numPromotedItemsSuccess_{0};
   std::atomic<uint64_t> runCount_{0};
 };
 } // namespace cachelib

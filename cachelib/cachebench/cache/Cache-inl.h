@@ -532,6 +532,8 @@ Stats Cache<Allocator>::getStats() const {
   ret.numBackgroundEvictions = cacheStats.backgroundEvictorStats.numEvictedItems;
   ret.numBackgroundEvictionsFromSchedule = cacheStats.backgroundEvictorStats.numEvictedItemsFromSchedule;
   ret.numBackgroundEvictorRuns = cacheStats.backgroundEvictorStats.numTraversals;
+  ret.numPromotedItemsTotal = cacheStats.backgroundEvictorStats.numPromotedItemsTotal;
+  ret.numPromotedItemsSuccess = cacheStats.backgroundEvictorStats.numPromotedItemsSuccess;
 
   ret.numCacheGets = cacheStats.numCacheGets;
   ret.numCacheGetMiss = cacheStats.numCacheGetMiss;

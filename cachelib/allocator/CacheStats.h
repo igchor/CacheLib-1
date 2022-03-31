@@ -296,6 +296,8 @@ struct BackgroundEvictorStats {
   // number of times we went executed the thread //TODO: is this def correct?
   uint64_t numTraversals{0};
 
+  uint64_t numPromotedItemsTotal{0};
+  uint64_t numPromotedItemsSuccess{0};
 };
 
 // CacheMetadata type to export
