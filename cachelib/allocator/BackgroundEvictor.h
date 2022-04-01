@@ -57,8 +57,8 @@ class BackgroundEvictor : public PeriodicWorker {
   void scheduleEviction(size_t pid, size_t cid) {
       tasks_.enqueue(std::make_pair(pid,cid));
   }
-  bool schedulePromotion(const typename CacheT::ItemHandle& handle) {
-    promotionTasks_.enqueue(std::move(handle.clone()));
+  bool schedulePromotion(folly::StringPiece key) {
+    promotionTasks_.enqueue(std::move(key));
     return true; // XXX: use bounded queue and return false on fail
   }
   BackgroundEvictorStats getStats() const noexcept;
@@ -72,7 +72,7 @@ class BackgroundEvictor : public PeriodicWorker {
   std::shared_ptr<BackgroundEvictorStrategy> strategy_;
   unsigned int tid_;
   folly::UMPSCQueue<std::pair<size_t,size_t>,true> tasks_;
-  folly::UMPSCQueue<typename CacheT::ItemHandle,true> promotionTasks_;
+  folly::UMPSCQueue<folly::StringPiece,true> promotionTasks_;
 
   // implements the actual logic of running the background evictor
   void work() override final;

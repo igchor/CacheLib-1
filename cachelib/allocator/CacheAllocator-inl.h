@@ -365,8 +365,6 @@ CacheAllocator<CacheTrait>::allocateInternalTier(TierId tid,
                                              uint32_t creationTime,
                                              uint32_t expiryTime,
                                              bool evict) {
-  util::LatencyTracker tracker{stats().allocateLatency_};
-
   SCOPE_FAIL { stats_.invalidAllocs.inc(); };
 
   // number of bytes required for this item
@@ -436,6 +434,7 @@ CacheAllocator<CacheTrait>::allocateInternal(PoolId pid,
                                              uint32_t size,
                                              uint32_t creationTime,
                                              uint32_t expiryTime) {
+  util::LatencyTracker tracker{stats().allocateLatency_};
   auto tid = 0; /* TODO: consult admission policy */
   for(TierId tid = 0; tid < numTiers_; ++tid) {
     // TODO: Today disableEviction means do not evict from memory (DRAM).
@@ -443,9 +442,6 @@ CacheAllocator<CacheTrait>::allocateInternal(PoolId pid,
     bool evict = (config_.insertTopTier || tid == numTiers_ - 1) && !config_.disableEviction;
     auto handle = allocateInternalTier(tid, pid, key, size, creationTime, expiryTime, evict);
     if (handle) {
-      if (tid != 0 && backgroundEvictor_) {
-        backgroundEvictor_->schedulePromotion(handle);
-      }
       return handle;
     }
   }
@@ -1123,6 +1119,7 @@ CacheAllocator<CacheTrait>::insertOrReplace(const ItemHandle& handle) {
     throw std::invalid_argument("Handle is already accessible");
   }
 
+  auto tid = getTierId(*handle);
   insertInMMContainer(*(handle.getInternal()));
   ItemHandle replaced;
   try {
@@ -1172,6 +1169,10 @@ CacheAllocator<CacheTrait>::insertOrReplace(const ItemHandle& handle) {
     eventTracker->record(AllocatorApiEvent::INSERT_OR_REPLACE, handle->getKey(),
                          result, handle->getSize(),
                          handle->getConfiguredTTL().count());
+  }
+
+  if (tid != 0 && backgroundEvictor_) {
+    backgroundEvictor_->schedulePromotion(handle->getKey());
   }
 
   return replaced;
@@ -1726,8 +1727,14 @@ CacheAllocator<CacheTrait>::tryEvictToNextMemoryTier(
 template <typename CacheTrait>
 typename CacheAllocator<CacheTrait>::ItemHandle
 CacheAllocator<CacheTrait>::tryPromoteToNextMemoryTier(ItemHandle& item) {
+  if (!item)
+    return {};
+
   auto tid = getTierId(*item);
   auto pid = allocator_[tid]->getAllocInfo(item->getMemory()).poolId;
+
+  if (!itemPromotionPredicate(*item))
+    return {};
 
   TierId nextTier = tid; // TODO - calculate this based on some admission policy
   if (nextTier-- > 0) {
@@ -1736,7 +1743,7 @@ CacheAllocator<CacheTrait>::tryPromoteToNextMemoryTier(ItemHandle& item) {
                      item->getSize(),
                      item->getCreationTime(),
                      item->getExpiryTime(),
-                     false /* evict */);
+                     true /* evict */);
 
     if (newItemHdl) {
       XDCHECK_EQ(newItemHdl->getSize(), item->getSize());
@@ -3013,6 +3020,7 @@ CacheAllocator<CacheTrait>::allocateNewItemForOldItem(const Item& oldItem) {
   // TODO: Today disableEviction means do not evict from memory (DRAM).
   //       Should we support eviction between memory tiers (e.g. from DRAM to PMEM)?
   bool evict = (config_.insertTopTier || tid == numTiers_ - 1) && !config_.disableEviction;
+  util::LatencyTracker tracker{stats().allocateLatency_};
 
   // Set up the destination for the move. Since oldItem would have the moving
   // bit set, it won't be picked for eviction.

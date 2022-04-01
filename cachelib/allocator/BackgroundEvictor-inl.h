@@ -49,16 +49,14 @@ void BackgroundEvictor<CacheT>::work() {
       }
 
       while (auto entry = promotionTasks_.try_dequeue()) {
-        auto handle = std::move(entry).value();
+        auto key = std::move(entry).value();
         numPromotedItemsTotal_.fetch_add(1, std::memory_order_relaxed);
-        if (!cache_.tryPromoteToNextMemoryTier(handle)) {
+        auto handle = cache_.findToWrite(key);
+        if (cache_.tryPromoteToNextMemoryTier(handle)) {
             numPromotedItemsSuccess_.fetch_add(1, std::memory_order_relaxed);
           // This could be useful for finds, not for allocations
           // cache_.markUseful(handle, AccessMode::kRead); // XXX: access mode?
         }
-
-
-        // XXX: swap items for eviction/promotion instead of handling them independently
       }
     } else {
       // for (const auto pid : cache_.getRegularPoolIds()) {
