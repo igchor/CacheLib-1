@@ -1,4 +1,5 @@
-in=`cat`
+in=`powershell.exe Get-Clipboard`
+# in=`xclip -o -selection clipboard`
 
 git branch --show-current | awk '{print "branch,"$1}'
 echo "${in}" | grep 'Hit Ratio' | sed 's/Hit Ratio[: ]*\([0-9.%]*\)/Hit Ratio,\1/'
