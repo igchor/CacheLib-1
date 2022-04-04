@@ -1308,7 +1308,7 @@ CacheAllocator<CacheTrait>::moveRegularItemOnEviction(
 template <typename CacheTrait>
 bool CacheAllocator<CacheTrait>::moveRegularItem(Item& oldItem,
                                                  ItemHandle& newItemHdl) {
-  XDCHECK(config_.moveCb);
+  // XDCHECK(config_.moveCb);
   util::LatencyTracker tracker{stats_.moveRegularLatency_};
 
   if (!oldItem.isAccessible() || oldItem.isExpired()) {
@@ -1333,7 +1333,12 @@ bool CacheAllocator<CacheTrait>::moveRegularItem(Item& oldItem,
   // responsibility to invalidate them. The move can only fail after this
   // statement if the old item has been removed or replaced, in which case it
   // should be fine for it to be left in an inconsistent state.
-  config_.moveCb(oldItem, *newItemHdl, nullptr);
+  if (config_.moveCb) {
+    config_.moveCb(oldItem, *newItemHdl, nullptr);
+  } else {
+    std::memcpy(newItemHdl->getWritableMemory(), oldItem.getMemory(),
+                oldItem.getSize());
+  } 
 
   // Inside the access container's lock, this checks if the old item is
   // accessible and its refcount is zero. If the item is not accessible,

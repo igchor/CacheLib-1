@@ -40,89 +40,25 @@ PoolRebalancer::~PoolRebalancer() { stop(std::chrono::seconds(0)); }
 void PoolRebalancer::work() {
   try {
     for (const auto pid : cache_.getRegularPoolIds()) {
-      auto strategy = cache_.getRebalanceStrategy(pid);
-      if (!strategy) {
-        strategy = defaultStrategy_;
+      auto stats = cache_.getPoolStats(pid);
+      auto candidates = std::vector<unsigned>(stats.getClassIds().begin(), stats.getClassIds().end());
+      std::sort(candidates.begin(), candidates.end(), [&](const ClassId& a, const ClassId& b) {
+        const auto& acStats = stats.mpStats.acStats;
+        return acStats.at(a).getTotalFreeMemory() <
+              acStats.at(b).getTotalFreeMemory();
+      });
+
+      size_t evicted = 0;
+      for (auto const cid : candidates) {
+        if (cache_.evictFrom(0, pid, cid))
+          evicted++;
       }
-      tryRebalancing(pid, *strategy);
+      XLOG(WARN, "Evicted in BG: {}", std::to_string(evicted));
     }
+    // XXX: 
   } catch (const std::exception& ex) {
     XLOGF(ERR, "Rebalancing interrupted due to exception: {}", ex.what());
   }
-}
-
-void PoolRebalancer::releaseSlab(PoolId pid,
-                                 ClassId victimClassId,
-                                 ClassId receiverClassId) {
-  const auto now = util::getCurrentTimeMs();
-
-  cache_.releaseSlab(pid, victimClassId, receiverClassId,
-                     SlabReleaseMode::kRebalance);
-  const auto elapsed_time =
-      static_cast<uint64_t>(util::getCurrentTimeMs() - now);
-  const PoolStats poolStats = cache_.getPoolStats(pid);
-  unsigned int numSlabsInReceiver = 0;
-  uint32_t receiverAllocSize = 0;
-  uint64_t receiverEvictionAge = 0;
-  if (receiverClassId != Slab::kInvalidClassId) {
-    numSlabsInReceiver = poolStats.numSlabsForClass(receiverClassId);
-    receiverAllocSize = poolStats.allocSizeForClass(receiverClassId);
-    receiverEvictionAge = poolStats.evictionAgeForClass(receiverClassId);
-  }
-  stats_.addSlabReleaseEvent(
-      victimClassId, receiverClassId, elapsed_time, pid,
-      poolStats.numSlabsForClass(victimClassId), numSlabsInReceiver,
-      poolStats.allocSizeForClass(victimClassId), receiverAllocSize,
-      poolStats.evictionAgeForClass(victimClassId), receiverEvictionAge,
-      poolStats.mpStats.acStats.at(victimClassId).freeAllocs);
-  XLOGF(DBG,
-        "Moved slab in Pool Id: {}, Victim Class Id: {}, Receiver "
-        "Class Id: {}",
-        static_cast<int>(pid), static_cast<int>(victimClassId),
-        static_cast<int>(receiverClassId));
-}
-
-RebalanceContext PoolRebalancer::pickVictimByFreeAlloc(PoolId pid) const {
-  const auto& mpStats = cache_.getPool(pid).getStats();
-  uint64_t maxFreeAllocSlabs = 1;
-  ClassId retId = Slab::kInvalidClassId;
-  for (auto& id : mpStats.classIds) {
-    uint64_t freeAllocSlabs = mpStats.acStats.at(id).freeAllocs /
-                              mpStats.acStats.at(id).allocsPerSlab;
-
-    if (freeAllocSlabs > freeAllocThreshold_ &&
-        freeAllocSlabs > maxFreeAllocSlabs) {
-      maxFreeAllocSlabs = freeAllocSlabs;
-      retId = id;
-    }
-  }
-  RebalanceContext ctx;
-  ctx.victimClassId = retId;
-  ctx.receiverClassId = Slab::kInvalidClassId;
-  return ctx;
-}
-
-bool PoolRebalancer::tryRebalancing(PoolId pid, RebalanceStrategy& strategy) {
-  if (freeAllocThreshold_ > 0) {
-    auto ctx = pickVictimByFreeAlloc(pid);
-    if (ctx.victimClassId != Slab::kInvalidClassId) {
-      releaseSlab(pid, ctx.victimClassId, Slab::kInvalidClassId);
-    }
-  }
-
-  if (!cache_.getPool(pid).allSlabsAllocated()) {
-    return false;
-  }
-
-  const auto context = strategy.pickVictimAndReceiver(cache_, pid);
-  if (context.victimClassId == Slab::kInvalidClassId) {
-    XLOGF(DBG,
-          "Pool Id: {} rebalancing strategy didn't find an victim",
-          static_cast<int>(pid));
-    return false;
-  }
-  releaseSlab(pid, context.victimClassId, context.receiverClassId);
-  return true;
 }
 
 } // namespace cachelib

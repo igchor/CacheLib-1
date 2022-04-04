@@ -100,6 +100,8 @@ class CacheBase {
   // @param poolId   the pool id
   virtual PoolStats getPoolStats(PoolId poolId) const = 0;
 
+  virtual bool evictFrom(unsigned tid, unsigned pid, unsigned cid) = 0;
+
   // @param poolId   the pool id
   virtual AllSlabReleaseEvents getAllSlabReleaseEvents(PoolId poolId) const = 0;
 
