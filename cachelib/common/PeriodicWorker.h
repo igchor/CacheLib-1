@@ -91,7 +91,7 @@ class PeriodicWorker {
   /* Wake up the worker */
   void wakeUp() noexcept {
     {
-      std::unique_lock<std::timed_mutex> l(lock_);
+     //  std::unique_lock<std::timed_mutex> l(lock_);
       wakeUp_ = true;
     }
     cond_.notify_one();
@@ -126,7 +126,7 @@ class PeriodicWorker {
   /* State to track whether the worker thread should wake up from sleep. This
    * starts off as false by default, and is flipped to true by the wakeUp call
    */
-  bool wakeUp_ = false;
+  std::atomic<bool> wakeUp_ = false;
 
   /* Condition variable to signal stopper or worker thread */
   std::condition_variable_any cond_{};

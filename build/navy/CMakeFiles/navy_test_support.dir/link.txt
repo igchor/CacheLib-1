@@ -1,0 +1,2 @@
+/usr/bin/ar qc libnavy_test_support.a CMakeFiles/navy_test_support.dir/testing/BufferGen.cpp.o CMakeFiles/navy_test_support.dir/testing/MockDevice.cpp.o CMakeFiles/navy_test_support.dir/testing/MockJobScheduler.cpp.o CMakeFiles/navy_test_support.dir/testing/SeqPoints.cpp.o
+/usr/bin/ranlib libnavy_test_support.a

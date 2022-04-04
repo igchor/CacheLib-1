@@ -1,0 +1,2 @@
+/usr/bin/ar qc libcachelib_datatype.a CMakeFiles/cachelib_datatype.dir/Buffer.cpp.o
+/usr/bin/ranlib libcachelib_datatype.a

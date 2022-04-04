@@ -3,6 +3,9 @@
     "cacheSizeMB": 8192,
     "usePosixShm": true,
     "poolRebalanceIntervalSec": 0,
+    "backgroundEvictorIntervalMilSec": 100,
+    "backgroundEvictorStrategy": "free-threshold",
+    "freeThreshold": 0.1,
     "persistedCacheDir": "/tmp/mem-tier",
     "memoryTiers" : [
       {
@@ -10,7 +13,7 @@
       },
       {
         "ratio": 1,
-        "file": "/pmem/memory-mapped-tier"
+        "file": "/mnt/pmem0/memory-mapped-tier"
       }
     ]
   }, 
@@ -32,7 +35,7 @@
       "loneGetRatio": 0.2315436539873129, 
       "numKeys": 71605574, 
       "numOps": 5000000, 
-      "numThreads": 24, 
+      "numThreads": 20, 
       "popDistFile": "pop.json", 
        
       "setRatio": 0.0, 

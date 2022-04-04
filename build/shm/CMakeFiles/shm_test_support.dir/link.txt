@@ -1,0 +1,2 @@
+/usr/bin/ar qc libshm_test_support.a CMakeFiles/shm_test_support.dir/tests/common.cpp.o
+/usr/bin/ranlib libshm_test_support.a

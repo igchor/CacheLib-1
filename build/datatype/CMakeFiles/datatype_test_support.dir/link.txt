@@ -1,0 +1,2 @@
+/usr/bin/ar qc libdatatype_test_support.a CMakeFiles/datatype_test_support.dir/tests/DataTypeTest.cpp.o
+/usr/bin/ranlib libdatatype_test_support.a

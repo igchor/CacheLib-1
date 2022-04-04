@@ -391,6 +391,16 @@ CacheAllocator<CacheTrait>::allocateInternalTier(TierId tid,
     if (backgroundEvictor_ && config_.wakeupBgEvictor) {
       backgroundEvictor_->wakeUp();
     }
+  } else if (backgroundEvictor_) {
+      auto freeMemRatio = double(allocator_[tid]->slabAllocator_.memoryPoolSize_[pid]) / allocator_[tid]->slabAllocator_.memorySize_;
+
+      if (freeMemRatio < 0.1) {
+        if (config_.scheduleEviction) {
+          backgroundEvictor_->schedule(pid,cid);
+        }
+
+        backgroundEvictor_->wakeUp();
+      }
   }
 
   ItemHandle handle;

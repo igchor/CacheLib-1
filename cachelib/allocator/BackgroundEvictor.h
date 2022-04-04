@@ -60,13 +60,14 @@ class BackgroundEvictor : public PeriodicWorker {
   }
   BackgroundEvictorStats getStats() const noexcept;
 
+  std::shared_ptr<BackgroundEvictorStrategy> strategy_;
+
  private:
   // cache allocator's interface for evicting
   
   using Item = typename Cache::Item;
   
   Cache& cache_;
-  std::shared_ptr<BackgroundEvictorStrategy> strategy_;
   unsigned int tid_;
   folly::UMPSCQueue<std::pair<size_t,size_t>,true> tasks_;
 

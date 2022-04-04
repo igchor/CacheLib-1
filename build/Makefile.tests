@@ -1,0 +1,203 @@
+# Copyright (c) Facebook, Inc. and its affiliates.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+TESTS =  \
+	common-test-AccessTrackerTest \
+	common-test-BloomFilterTest \
+	common-test-BytesEqualTest \
+	common-test-CohortTests \
+	common-test-CounterTests \
+	common-test-CountMinSketchTest \
+	common-test-EventInterfaceTest \
+	common-test-HashTests \
+	common-test-IteratorsTests \
+	common-test-MutexTests \
+	common-test-PeriodicWorkerTest \
+	common-test-SerializationTest \
+	common-test-UtilTests \
+	common-test-CountDownLatchTest \
+	common-test-UtilTestsRSS \
+	shm-test-test_page_size \
+	shm-test-test_posix \
+	shm-test-test_shm \
+	shm-test-test_shm_death_style \
+	shm-test-test_shm_manager \
+	shm-test-test_sysv \
+	navy-test-BufferTest \
+	navy-test-HashTest \
+	navy-test-UtilsTest \
+	navy-test-BucketStorageTest \
+	navy-test-BucketTest \
+	navy-test-DynamicRandomAPTest \
+	navy-test-RejectRandomAPTest \
+	navy-test-FifoPolicyTest \
+	navy-test-HitsReinsertionPolicyTest \
+	navy-test-IndexTest \
+	navy-test-LruPolicyTest \
+	navy-test-RegionTest \
+	navy-test-RecordIOTest \
+	navy-test-SerializationTest \
+	navy-test-OrderedThreadPoolJobSchedulerTest \
+	navy-test-ThreadPoolJobSchedulerTest \
+	navy-test-DriverTest \
+	navy-test-DeviceTest \
+	navy-test-AllocatorTest \
+	navy-test-RegionManagerTest \
+	navy-test-BufferGenTest \
+	navy-test-MockJobSchedulerTest \
+	navy-test-SeqPointsTest \
+	navy-test-BlockCacheTest \
+	navy-test-BigHashTest \
+	allocator-test-CacheBaseTest \
+	allocator-test-ItemHandleTest \
+	allocator-test-ItemTest \
+	allocator-test-MarginalHitsStateTest \
+	allocator-test-MM2QTest \
+	allocator-test-MMLruTest \
+	allocator-test-MMTinyLFUTest \
+	allocator-test-NvmCacheStateTest \
+	allocator-test-RefCountTest \
+	allocator-test-SimplePoolOptimizationTest \
+	allocator-test-SimpleRebalancingTest \
+	allocator-test-PoolOptimizeStrategyTest \
+	allocator-test-RebalanceStrategyTest \
+	allocator-test-AllocatorTypeTest \
+	allocator-test-ChainedHashTest \
+	allocator-test-AllocatorResizeTypeTest \
+	allocator-test-AllocatorHitStatsTypeTest \
+	allocator-test-AllocatorMemoryTiersTest \
+	allocator-test-MemoryTiersTest \
+	allocator-test-MultiAllocatorTest \
+	allocator-test-NvmAdmissionPolicyTest \
+	allocator-test-NvmItemTests \
+	allocator-test-InFlightPutsTest \
+	allocator-test-TombStoneTests \
+	allocator-test-NavySetupTest \
+	allocator-test-NvmCacheTests \
+	allocator-test-NavyConfigTest \
+	allocator-test-AllocationClassTest \
+	allocator-test-MemoryAllocatorTest \
+	allocator-test-MemoryPoolManagerTest \
+	allocator-test-MemoryPoolTest \
+	allocator-test-SlabAllocatorTest \
+	allocator-test-DListTest \
+	allocator-test-MultiDListTest \
+	allocator-test-SListTest \
+	datatype-test-RangeMapTest \
+	datatype-test-BufferTest \
+	datatype-test-FixedSizeArrayTest \
+	datatype-test-MapTest \
+	compact-cache-test-CCacheTests \
+	benchmark-test-BinarySearchVsHashTableBench \
+	benchmark-test-BucketMutexBench \
+	benchmark-test-BytesEqualBenchmark \
+	benchmark-test-CachelibMapOperationBench \
+	benchmark-test-CachelibMapWorkloadBench \
+	benchmark-test-CachelibRangeMapWorkloadBench \
+	benchmark-test-CachelibTickerClockBench \
+	benchmark-test-CompactCacheBench \
+	benchmark-test-HashMapBenchmark \
+	benchmark-test-ItemsReaperBench \
+	benchmark-test-main \
+	benchmark-test-MMTypeAccessBench \
+	benchmark-test-MMTypeBench \
+	benchmark-test-MutexBench \
+	benchmark-test-PtrCompressionBench \
+	benchmark-test-SListBench \
+	benchmark-test-ThreadLocalBench \
+	benchmark-test-EventTrackerPerf \
+	cachebench-test-WorkloadGeneratorTest \
+	cachebench-test-PieceWiseCacheTest \
+	cachebench-test-RingBufferTest \
+	cachebench-test-ShortThreadIdTest \
+	cachebench-test-ValueHistoryTest \
+	cachebench-test-ValueTrackerTest \
+	cachebench-test-NandWritesTest \
+	cachebench-test-TimeStampTickerTest
+
+LOGS=$(TESTS:%=%.log)
+MARKERS_OK=$(LOGS:%=%.ok)
+MARKERS_FAIL=$(LOGS:%=%.fail)
+OUTPUT=cachelib-test-summary.log
+
+.PHONY: all clean
+
+all: $(OUTPUT)
+
+$(OUTPUT): $(LOGS)
+	( echo  === Cachelib Test Summary === ; \
+	  echo ; \
+	  printf "%d TESTS PASSED\n" $$(ls *.ok | wc -l) ; \
+	  printf "%d TESTS FAILED:\n" $$(ls *.fail | wc -l) ; \
+	  for i in $$(ls *.fail) ; do \
+	      TESTNAME=$${i%.log.fail} ; \
+	      printf "  %s\n"  $$TESTNAME ; \
+	  done ; \
+	  echo ; \
+	  echo "(system information at the end of this file)" ; \
+	  echo ; \
+	  echo ; \
+	  for i in $$(ls *.fail) ; do \
+	      LOGFILE=$${i%.fail} ; \
+	      TESTNAME=$${LOGFILE%.log} ; \
+	      echo === FAILED TEST: $$TESTNAME === ; \
+	      echo ; \
+	      cat "$$LOGFILE" ; \
+	      printf "\n\n\n" ; \
+	  done ; \
+	  echo === System Information === ; \
+	  echo ; \
+	  echo == uname ; \
+	  uname -a ; \
+	  echo ; \
+	  echo == "/proc/cpuinfo (first cpu)" ; \
+	  sed '/^$$/q' /proc/cpuinfo ; \
+	  echo ; \
+	  echo == env ; \
+	  env ; \
+	  echo ; \
+	  echo == df ; \
+	  df -hT ; \
+	  echo ; \
+	  echo == lsblk ; \
+	  lsblk --list --ascii ; \
+	  echo ; \
+	  echo == "lshw (storage/disk)" ; \
+	  sudo -n lshw -c storage -c disk ; \
+	  echo ; \
+	  echo "== dmesg (scsi/ata)" ; \
+	  sudo -n dmesg | grep -i -e scsi -e ata ; \
+	  echo ; \
+	  echo == top ; \
+	  top -b -1 -n1 -Eg -w512; \
+	  echo ; \
+	  echo == lspci ; \
+	  lspci ; \
+	  echo ; \
+	  echo == g++ -v ; \
+	  g++ -v ; \
+	  echo ; \
+	) > "$@.t" 2>&1 \
+	&& mv "$@.t" "$@"
+
+$(LOGS): %.log: %
+	@echo Running $^
+	@if "./$^" > "$@" 2>&1 ; then \
+		touch "$@.ok" ; \
+	else \
+		touch "$@.fail" ; \
+	fi
+
+clean:
+	@rm -f $(LOGS) $(MARKERS_OK) $(MARKERS_FAIL) $(OUTPUT)

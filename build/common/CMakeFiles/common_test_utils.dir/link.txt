@@ -1,0 +1,2 @@
+/usr/bin/ar qc libcommon_test_utils.a CMakeFiles/common_test_utils.dir/TestUtils.cpp.o
+/usr/bin/ranlib libcommon_test_utils.a
