@@ -38,6 +38,7 @@ CacheConfig::CacheConfig(const folly::dynamic& configJson) {
   
   JSONSetVal(configJson, backgroundEvictorStrategy);
   JSONSetVal(configJson, freeThreshold);
+  JSONSetVal(configJson, evictionBatchSize);
   JSONSetVal(configJson, nKeepFree);
 
   JSONSetVal(configJson, htBucketPower);
@@ -115,7 +116,7 @@ CacheConfig::CacheConfig(const folly::dynamic& configJson) {
   // if you added new fields to the configuration, update the JSONSetVal
   // to make them available for the json configs and increment the size
   // below
-  checkCorrectSize<CacheConfig, 808>();
+  checkCorrectSize<CacheConfig, 816>();
 
   if (numPools != poolSizes.size()) {
     throw std::invalid_argument(folly::sformat(
@@ -151,12 +152,12 @@ std::shared_ptr<BackgroundEvictorStrategy> CacheConfig::getBackgroundEvictorStra
   }
 
   if (backgroundEvictorStrategy == "free-threshold") {
-    return std::make_shared<FreeThresholdStrategy>(freeThreshold);
+    return std::make_shared<FreeThresholdStrategy>(freeThreshold, evictionBatchSize);
   } else if (backgroundEvictorStrategy == "keep-free") {
     return std::make_shared<KeepFreeStrategy>(nKeepFree);
   } else {
     //default!
-    return std::make_shared<FreeThresholdStrategy>(freeThreshold);
+    return std::make_shared<FreeThresholdStrategy>(freeThreshold, evictionBatchSize);
   }
 }
 

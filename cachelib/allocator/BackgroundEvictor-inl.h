@@ -49,7 +49,7 @@ void BackgroundEvictor<CacheT>::work() {
         if (double(acStats.at(cid).getTotalFreeMemory()) / acStats.at(cid).getTotalFreeMemory() > strategy_->ratio())
           return;
 
-        if (cache_.evictFrom(0, pid, cid))
+        if (cache_.evictFrom(0, pid, cid, strategy_->batch()))
           evicted++;
        }
       numEvictedItems_.fetch_add(evicted, std::memory_order_relaxed);

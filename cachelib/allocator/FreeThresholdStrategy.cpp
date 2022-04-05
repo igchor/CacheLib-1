@@ -23,8 +23,8 @@ namespace cachelib {
 
 
 
-FreeThresholdStrategy::FreeThresholdStrategy(double freeThreshold) 
-    : freeThreshold_(freeThreshold) {}
+FreeThresholdStrategy::FreeThresholdStrategy(double freeThreshold, size_t evictionBatchSize) 
+    : freeThreshold_(freeThreshold), evictionBatchSize_(evictionBatchSize) {}
 
 size_t FreeThresholdStrategy::calculateBatchSize(const CacheBase& cache,
                                        unsigned int tid,

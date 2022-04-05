@@ -76,6 +76,7 @@ struct CacheConfig : public JSONConfig {
   std::string rebalanceStrategy;
   std::string backgroundEvictorStrategy;
   double freeThreshold{0.01}; //keep 1% of space free
+  size_t evictionBatchSize{1};
   uint32_t nKeepFree{100}; //keep at most 100 slots free
   uint64_t rebalanceMinSlabs{1};
   double rebalanceDiffRatio{0.25};

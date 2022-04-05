@@ -1218,7 +1218,7 @@ class CacheAllocator : public CacheBase {
                 "alloc_ incorrectly arranged");
 #pragma GCC diagnostic pop
 
-bool evictFrom(unsigned tid, unsigned pid, unsigned cid) override {
+bool evictFrom(unsigned tid, unsigned pid, unsigned cid, size_t count) override {
     auto& mmContainer = getMMContainer(tid, pid, cid);
 
     // Keep searching for a candidate until we were able to evict it
@@ -1246,8 +1246,11 @@ bool evictFrom(unsigned tid, unsigned pid, unsigned cid) override {
       if (!moveRegularItemOnEviction(itr, newHandle)) {
         ++itr;
 
-      } else
-        return true;
+      } else {
+        count--;
+        if (count == 0)
+          return true;
+      }
     }
    return false;
   }

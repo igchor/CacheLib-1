@@ -27,7 +27,7 @@ namespace cachelib {
 class FreeThresholdStrategy : public BackgroundEvictorStrategy {
 
 public:
-  FreeThresholdStrategy(double freeThreshold);
+  FreeThresholdStrategy(double freeThreshold, size_t evictionBatchSize);
   ~FreeThresholdStrategy() {}
 
   size_t calculateBatchSize(const CacheBase& cache,
@@ -38,8 +38,13 @@ public:
                                        double ratio() override {
                                          return freeThreshold_;
                                        }
+
+                                       size_t batch() override {
+                                         return evictionBatchSize_;
+                                       }
 private:
   double freeThreshold_;
+  size_t evictionBatchSize_;
 };
 
 } // namespace cachelib

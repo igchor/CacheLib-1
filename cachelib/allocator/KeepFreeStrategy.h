@@ -35,6 +35,10 @@ public:
                                        double ratio() {
                                          return 0;
                                        }
+
+                                       size_t batch() override {
+                                         return 0;
+                                       }
 private:
   size_t nKeepFree_;
 };

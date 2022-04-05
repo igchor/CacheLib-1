@@ -32,6 +32,7 @@ public:
                                        ClassId cid ) = 0;
 
   virtual double ratio() = 0;
+  virtual size_t batch() = 0;
 };
 
 } // namespace cachelib
