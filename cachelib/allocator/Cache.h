@@ -130,6 +130,8 @@ class CacheBase {
   virtual std::unordered_map<std::string, uint64_t> getEventTrackerStatsMap()
       const = 0;
 
+  virtual bool evictFrom(unsigned tid, unsigned pid, unsigned cid) = 0;
+
   // @return the Cache metadata
   virtual CacheMetadata getCacheMetadata() const noexcept = 0;
 

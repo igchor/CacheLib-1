@@ -34,46 +34,29 @@ BackgroundEvictor<CacheT>::~BackgroundEvictor() { stop(std::chrono::seconds(0));
 
 template <typename CacheT>
 void BackgroundEvictor<CacheT>::work() {
-  try {
-    if (!tasks_.empty()) {
-      while (auto entry = tasks_.try_dequeue()) {
-        auto [pid, cid] = entry.value();
-        auto batch = strategy_->calculateBatchSize(cache_, tid_, pid, cid);
-        auto evicted = BackgroundEvictorAPIWrapper<CacheT>::traverseAndEvictItems(cache_,
-                tid_,pid,cid,batch);
-        numEvictedItemsFromSchedule_.fetch_add(1, std::memory_order_relaxed);
-        runCount_.fetch_add(1, std::memory_order_relaxed);
-      }
-    } else {
-      for (const auto pid : cache_.getRegularPoolIds()) {
-        //check if the pool is full - probably should be if tier is full
-        if (cache_.getPoolByTid(pid,tid_).allSlabsAllocated()) {
-          checkAndRun(pid);
-        }
-      }
-    }
-  } catch (const std::exception& ex) {
-    XLOGF(ERR, "BackgroundEvictor interrupted due to exception: {}", ex.what());
-  }
-}
+   try {
+     for (const auto pid : cache_.getRegularPoolIds()) {
+     auto stats = cache_.getPoolStats(pid);
+     auto candidates = std::vector<unsigned>(stats.getClassIds().begin(), stats.getClassIds().end());
+     const auto& acStats = stats.mpStats.acStats;
+     std::sort(candidates.begin(), candidates.end(), [&](const ClassId& a, const ClassId& b) {
+       return acStats.at(a).getTotalFreeMemory() <
+             acStats.at(b).getTotalFreeMemory();
+     });
 
-// Look for classes that exceed the target memory capacity
-// and return those for eviction
-template <typename CacheT>
-void BackgroundEvictor<CacheT>::checkAndRun(PoolId pid) {    
-  const auto& mpStats = cache_.getPoolByTid(pid,tid_).getStats();
-  for (auto& cid : mpStats.classIds) {
-      auto batch = strategy_->calculateBatchSize(cache_,tid_,pid,cid);
-      if (!batch)
-        continue;
+      size_t evicted = 0;
+      for (auto const cid : candidates) {
+        if (double(acStats.at(cid).getTotalFreeMemory()) / acStats.at(cid).getTotalFreeMemory() > strategy_->ratio())
+          return;
 
-      //try evicting BATCH items from the class in order to reach free target
-      auto evicted =
-          BackgroundEvictorAPIWrapper<CacheT>::traverseAndEvictItems(cache_,
-              tid_,pid,cid,batch);
+        if (cache_.evictFrom(0, pid, cid))
+          evicted++;
+       }
       numEvictedItems_.fetch_add(evicted, std::memory_order_relaxed);
-  }
-  runCount_.fetch_add(1, std::memory_order_relaxed);
+     }
+   } catch (const std::exception& ex) {
+     XLOGF(ERR, "Rebalancing interrupted due to exception: {}", ex.what());
+   }
 }
 
 template <typename CacheT>

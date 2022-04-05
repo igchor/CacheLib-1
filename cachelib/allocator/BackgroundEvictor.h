@@ -55,9 +55,6 @@ class BackgroundEvictor : public PeriodicWorker {
 
   ~BackgroundEvictor() override;
   
-  void schedule(size_t pid, size_t cid) {
-      tasks_.enqueue(std::make_pair(pid,cid));
-  }
   BackgroundEvictorStats getStats() const noexcept;
 
  private:
@@ -68,11 +65,9 @@ class BackgroundEvictor : public PeriodicWorker {
   Cache& cache_;
   std::shared_ptr<BackgroundEvictorStrategy> strategy_;
   unsigned int tid_;
-  folly::UMPSCQueue<std::pair<size_t,size_t>,true> tasks_;
 
   // implements the actual logic of running the background evictor
   void work() override final;
-  void checkAndRun(PoolId pid);
   
   std::atomic<uint64_t> numEvictedItems_{0};
   std::atomic<uint64_t> numEvictedItemsFromSchedule_{0};

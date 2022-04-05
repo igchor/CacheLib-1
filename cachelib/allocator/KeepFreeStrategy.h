@@ -31,6 +31,10 @@ public:
                                        unsigned int tid,
                                        PoolId pid,
                                        ClassId cid );
+
+                                       double ratio() {
+                                         return 0;
+                                       }
 private:
   size_t nKeepFree_;
 };

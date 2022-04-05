@@ -1218,6 +1218,40 @@ class CacheAllocator : public CacheBase {
                 "alloc_ incorrectly arranged");
 #pragma GCC diagnostic pop
 
+bool evictFrom(unsigned tid, unsigned pid, unsigned cid) override {
+    auto& mmContainer = getMMContainer(tid, pid, cid);
+
+    // Keep searching for a candidate until we were able to evict it
+    // or until the search limit has been exhausted
+    unsigned int searchTries = 0;
+    auto itr = mmContainer.getEvictionIterator();
+    while ((config_.evictionSearchTries == 0 ||
+            config_.evictionSearchTries > searchTries) &&
+          itr) {
+      ++searchTries;
+
+      auto &oldItem = *itr.get();
+      auto newHandle = allocateInternalTier(1,
+                                pid,
+                                oldItem.getKey(),
+                                oldItem.getSize(),
+                                oldItem.getCreationTime(),
+                                oldItem.getExpiryTime());
+
+     if (!newHandle) {
+        XLOG(ERR, "Cannot evict elements in BG");
+        return false;
+      }
+
+      if (!moveRegularItemOnEviction(itr, newHandle)) {
+        ++itr;
+
+      } else
+        return true;
+    }
+   return false;
+  }
+
  private:
   // wrapper around Item's refcount and active handle tracking
   FOLLY_ALWAYS_INLINE void incRef(Item& it);

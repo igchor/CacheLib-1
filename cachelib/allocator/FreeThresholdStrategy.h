@@ -34,6 +34,10 @@ public:
                                        unsigned int tid,
                                        PoolId pid,
                                        ClassId cid );
+
+                                       double ratio() override {
+                                         return freeThreshold_;
+                                       }
 private:
   double freeThreshold_;
 };

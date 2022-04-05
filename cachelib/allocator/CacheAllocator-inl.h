@@ -382,14 +382,6 @@ CacheAllocator<CacheTrait>::allocateInternalTier(TierId tid,
   //       Should we support eviction between memory tiers (e.g. from DRAM to PMEM)?
   if (memory == nullptr && !config_.disableEviction) {
     memory = findEviction(tid, pid, cid);
-
-    if (backgroundEvictor_ && config_.scheduleEviction) {
-      backgroundEvictor_->schedule(pid,cid);
-    }
-
-    if (backgroundEvictor_ && config_.wakeupBgEvictor) {
-      backgroundEvictor_->wakeUp();
-    }
   }
 
   ItemHandle handle;
@@ -415,6 +407,10 @@ CacheAllocator<CacheTrait>::allocateInternalTier(TierId tid,
     // wake up rebalancer
     if (poolRebalancer_) {
       poolRebalancer_->wakeUp();
+    }
+
+    if (backgroundEvictor_ && config_.wakeupBgEvictor) {
+      backgroundEvictor_->wakeUp();
     }
   }
 

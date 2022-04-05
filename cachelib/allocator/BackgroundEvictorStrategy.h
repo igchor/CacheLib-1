@@ -30,6 +30,8 @@ public:
                                        unsigned int tid,
                                        PoolId pid,
                                        ClassId cid ) = 0;
+
+  virtual double ratio() = 0;
 };
 
 } // namespace cachelib
