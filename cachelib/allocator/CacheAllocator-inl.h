@@ -365,8 +365,6 @@ CacheAllocator<CacheTrait>::allocateInternalTier(TierId tid,
                                              uint32_t creationTime,
                                              uint32_t expiryTime,
                                              bool evict) {
-  util::LatencyTracker tracker{stats().allocateLatency_};
-
   SCOPE_FAIL { stats_.invalidAllocs.inc(); };
 
   // number of bytes required for this item
@@ -436,6 +434,7 @@ CacheAllocator<CacheTrait>::allocateInternal(PoolId pid,
                                              uint32_t size,
                                              uint32_t creationTime,
                                              uint32_t expiryTime) {
+  util::LatencyTracker tracker{stats().allocateLatency_};
   auto tid = 0; /* TODO: consult admission policy */
   for(TierId tid = 0; tid < numTiers_; ++tid) {
     // TODO: Today disableEviction means do not evict from memory (DRAM).
@@ -2882,6 +2881,7 @@ CacheAllocator<CacheTrait>::allocateNewItemForOldItem(const Item& oldItem) {
   // TODO: Today disableEviction means do not evict from memory (DRAM).
   //       Should we support eviction between memory tiers (e.g. from DRAM to PMEM)?
   bool evict = (config_.insertTopTier || tid == numTiers_ - 1) && !config_.disableEviction;
+  util::LatencyTracker tracker{stats().allocateLatency_};
 
   // Set up the destination for the move. Since oldItem would have the moving
   // bit set, it won't be picked for eviction.
