@@ -81,7 +81,7 @@ void RefCountTest::testBasic() {
   ASSERT_EQ(0, ref.getRaw());
   ASSERT_FALSE(ref.isInMMContainer());
   ASSERT_FALSE(ref.isAccessible());
-  ASSERT_FALSE(ref.isExclusive());
+  ASSERT_FALSE(ref.isMarkedForEviction());
   ASSERT_FALSE(ref.template isFlagSet<RefcountWithFlags::Flags::kMMFlag0>());
   ASSERT_FALSE(ref.template isFlagSet<RefcountWithFlags::Flags::kMMFlag1>());
 
@@ -89,7 +89,7 @@ void RefCountTest::testBasic() {
   ref.markInMMContainer();
   ASSERT_TRUE(ref.isInMMContainer());
   ASSERT_FALSE(ref.isAccessible());
-  ASSERT_FALSE(ref.isExclusive());
+  ASSERT_FALSE(ref.isMarkedForEviction());
   ASSERT_EQ(0, ref.getAccessRef());
   ASSERT_FALSE(ref.template isFlagSet<RefcountWithFlags::Flags::kMMFlag0>());
   ASSERT_FALSE(ref.template isFlagSet<RefcountWithFlags::Flags::kMMFlag1>());
@@ -105,13 +105,13 @@ void RefCountTest::testBasic() {
 
   // Incrementing past the max will fail
   auto rawRef = ref.getRaw();
-  ASSERT_FALSE(ref.incRef());
+  ASSERT_THROW(ref.incRef(), std::overflow_error);
   ASSERT_EQ(rawRef, ref.getRaw());
 
   // Bumping up access ref shouldn't affect admin ref and flags
   ASSERT_TRUE(ref.isInMMContainer());
   ASSERT_FALSE(ref.isAccessible());
-  ASSERT_FALSE(ref.isExclusive());
+  ASSERT_FALSE(ref.isMarkedForEviction());
   ASSERT_EQ(RefcountWithFlags::kAccessRefMask, ref.getAccessRef());
   ASSERT_TRUE(ref.template isFlagSet<RefcountWithFlags::Flags::kMMFlag0>());
   ASSERT_FALSE(ref.template isFlagSet<RefcountWithFlags::Flags::kMMFlag1>());
@@ -128,7 +128,7 @@ void RefCountTest::testBasic() {
   // Bumping down access ref shouldn't affect admin ref and flags
   ASSERT_TRUE(ref.isInMMContainer());
   ASSERT_FALSE(ref.isAccessible());
-  ASSERT_FALSE(ref.isExclusive());
+  ASSERT_FALSE(ref.isMarkedForEviction());
   ASSERT_EQ(0, ref.getAccessRef());
   ASSERT_TRUE(ref.template isFlagSet<RefcountWithFlags::Flags::kMMFlag0>());
   ASSERT_FALSE(ref.template isFlagSet<RefcountWithFlags::Flags::kMMFlag1>());
@@ -136,7 +136,7 @@ void RefCountTest::testBasic() {
   ref.template unSetFlag<RefcountWithFlags::Flags::kMMFlag0>();
   ASSERT_TRUE(ref.isInMMContainer());
   ASSERT_FALSE(ref.isAccessible());
-  ASSERT_FALSE(ref.isExclusive());
+  ASSERT_FALSE(ref.isMarkedForEviction());
   ASSERT_EQ(0, ref.getAccessRef());
   ASSERT_FALSE(ref.template isFlagSet<RefcountWithFlags::Flags::kMMFlag0>());
   ASSERT_FALSE(ref.template isFlagSet<RefcountWithFlags::Flags::kMMFlag1>());
@@ -145,28 +145,17 @@ void RefCountTest::testBasic() {
   ASSERT_EQ(0, ref.getRaw());
   ASSERT_FALSE(ref.isInMMContainer());
   ASSERT_FALSE(ref.isAccessible());
-  ASSERT_FALSE(ref.isExclusive());
+  ASSERT_FALSE(ref.isMarkedForEviction());
   ASSERT_EQ(0, ref.getAccessRef());
   ASSERT_FALSE(ref.template isFlagSet<RefcountWithFlags::Flags::kMMFlag0>());
   ASSERT_FALSE(ref.template isFlagSet<RefcountWithFlags::Flags::kMMFlag1>());
 
   // conditionally set flags
-  ASSERT_FALSE((ref.markExclusive()));
+  ASSERT_FALSE((ref.markForEviction()));
   ref.markInMMContainer();
-  ASSERT_TRUE((ref.markExclusive()));
-  ASSERT_FALSE((ref.isOnlyExclusive()));
+  // only first one succeeds
+  ASSERT_FALSE((ref.markForEviction()));
   ref.unmarkInMMContainer();
-  ref.template setFlag<RefcountWithFlags::Flags::kMMFlag0>();
-  // Have no other admin refcount but with a flag still means "isOnlyExclusive"
-  ASSERT_TRUE((ref.isOnlyExclusive()));
-
-  // Set some flags and verify that "isOnlyExclusive" does not care about flags
-  ref.markIsChainedItem();
-  ASSERT_TRUE(ref.isChainedItem());
-  ASSERT_TRUE((ref.isOnlyExclusive()));
-  ref.unmarkIsChainedItem();
-  ASSERT_FALSE(ref.isChainedItem());
-  ASSERT_TRUE((ref.isOnlyExclusive()));
 }
 } // namespace
 
