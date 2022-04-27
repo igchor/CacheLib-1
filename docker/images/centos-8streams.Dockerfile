@@ -7,7 +7,10 @@ git \
 tzdata \
 vim \
 gdb \
-clang
+clang \
+clang \
+python36 \
+glibc-devel.i686
 
 COPY ./install-cachelib-deps.sh ./install-cachelib-deps.sh
 RUN ./install-cachelib-deps.sh
