@@ -463,6 +463,21 @@ typename T::Handle ChainedHashTable::Container<T, HookPtr, LockT>::find(
 template <typename T,
           typename ChainedHashTable::Hook<T> T::*HookPtr,
           typename LockT>
+typename T::Handle ChainedHashTable::Container<T, HookPtr, LockT>::find(
+    T& node) const {
+  const auto bucket = ht_.getBucket(node.getKey());
+  auto l = locks_.lockShared(bucket);
+
+  if (!node.isAccessible()) {
+    return {};
+  }
+
+  return handleMaker_(&node);
+}
+
+template <typename T,
+          typename ChainedHashTable::Hook<T> T::*HookPtr,
+          typename LockT>
 serialization::ChainedHashTableObject
 ChainedHashTable::Container<T, HookPtr, LockT>::saveState() const {
   if (!ht_.isRestorable()) {
