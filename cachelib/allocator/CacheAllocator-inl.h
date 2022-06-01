@@ -1221,30 +1221,17 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
     ++searchTries;
 
     Item* candidate = itr.get();
-
-    // make sure no other thead is evicting the item
-    if (candidate->getRefCount() != 0) {
-      ++itr;
-      continue;
-    }
+    itr.destroy();
 
     if (candidate->isChainedItem()) {
       candidate = &candidate->asChainedItem().getParentItem(compressor_);
     }
 
-    auto toReleaseHandle = accessContainer_->find(candidate->getKey());
-    if (!toReleaseHandle) {
-      ++itr;
-      continue;
-    }
-  
-    itr.destroy();
-
     // for chained items, the ownership of the parent can change. We try to
     // evict what we think as parent and see if the eviction of parent
     // recycles the child we intend to.
-    bool evicted = tryEvictItem(mmContainer, toReleaseHandle);
-    if (evicted) {
+    auto toReleaseHandle = tryEvictItem(mmContainer, *candidate);
+    if (toReleaseHandle) {
       if (toReleaseHandle->hasChainedItem()) {
         (*stats_.chainedItemEvictions)[pid][cid].inc();
       } else {
@@ -1271,13 +1258,10 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
       }
     }
 
-    // If we destroyed the itr to possibly evict and failed, we restart
-    // from the beginning again
-    if (!itr) {
-      itr.resetToBegin();
-      for (int i = 0; i < searchTries; i++)
-        ++itr;
-    }
+    // If eviction failed, we restart from the beginning again
+    itr.resetToBegin();
+    for (int i = 0; i < searchTries; i++)
+      ++itr;
   }
   return nullptr;
 }
@@ -1331,10 +1315,9 @@ bool CacheAllocator<CacheTrait>::shouldWriteToNvmCacheExclusive(
 }
 
 template <typename CacheTrait>
-bool CacheAllocator<CacheTrait>::tryEvictItem(MMContainer& mmContainer,
-                                                WriteHandle &handle) {
-  auto &item = *handle;
-
+typename CacheAllocator<CacheTrait>::WriteHandle
+CacheAllocator<CacheTrait>::tryEvictItem(MMContainer& mmContainer,
+                                                Item &item) {
   // we should flush this to nvmcache if it is not already present in nvmcache
   // and the item is not expired.
   const bool evictToNvmCache = shouldWriteToNvmCache(item);
@@ -1348,11 +1331,13 @@ bool CacheAllocator<CacheTrait>::tryEvictItem(MMContainer& mmContainer,
       stats_.evictFailConcurrentFill.inc();
     else
       stats_.evictFailConcurrentFill.inc();
-    return false;
+    return WriteHandle{};
   }
 
-  // If there are other accessors, we should abort. We should be the only
-  // handle owner.
+  // If there are other accessors, we should abort. Acquire a handle here since
+  // if we remove the item from both access containers and mm containers
+  // below, we will need a handle to ensure proper cleanup in case we end up
+  // not evicting this item
   auto evictHandle = accessContainer_->removeIf(item, &itemEvictionPredicate);
 
   if (!evictHandle) {
@@ -1360,7 +1345,7 @@ bool CacheAllocator<CacheTrait>::tryEvictItem(MMContainer& mmContainer,
       stats_.evictFailParentAC.inc();
     else
       stats_.evictFailAC.inc();
-    return false;
+    return evictHandle;
   }
 
   auto removed = mmContainer.remove(item);
@@ -1379,18 +1364,18 @@ bool CacheAllocator<CacheTrait>::tryEvictItem(MMContainer& mmContainer,
       stats_.evictFailParentMove.inc();
     else
       stats_.evictFailMove.inc();
-    return false;
+    return evictHandle;
   }
 
   // Ensure that there are no accessors after removing from the access
-  // container. handle and evictHandle should be the only two handles.
-  XDCHECK(evictHandle->getRefCount() == 2);
+  // container.
+  XDCHECK(evictHandle->getRefCount() == 1);
 
   if (evictToNvmCache && shouldWriteToNvmCacheExclusive(item)) {
     XDCHECK(token.isValid());
     nvmCache_->put(evictHandle, std::move(token));
   }
-  return true;
+  return evictHandle;
 }
 
 template <typename CacheTrait>

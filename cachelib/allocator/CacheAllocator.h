@@ -1585,8 +1585,9 @@ class CacheAllocator : public CacheBase {
   // @param  mmContainer  the container to look for evictions.
   // @param  item         item to evict
   //
-  // @return whther eviction succeeded
-  bool tryEvictItem(MMContainer& mmContainer, WriteHandle& handle);
+  // @return  valid handle to the parent item on success. This will be the last
+  //          handle to the item
+  WriteHandle tryEvictItem(MMContainer& mmContainer, Item& item);
 
   // Deserializer CacheAllocatorMetadata and verify the version
   //
