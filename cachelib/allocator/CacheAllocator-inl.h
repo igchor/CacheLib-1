@@ -1223,12 +1223,12 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
     Item* candidate = itr.get();
 
     // make sure no other thead is evicting the item
-    if (candidate->getRefCount() != 0) {
+    if (candidate->getRefCount() != 0 || candidate->isMoving()) {
       ++itr;
       continue;
     }
   
-     if (candidate->isChainedItem()) {
+    if (candidate->isChainedItem()) {
       candidate = &candidate->asChainedItem().getParentItem(compressor_);
     }
 
@@ -1264,13 +1264,7 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
       }
     }
 
-    // If we destroyed the itr to possibly evict and failed, we restart
-    // from the beginning again
-    if (!itr) {
-      itr.resetToBegin();
-      for (int i = 0; i < searchTries; i++)
-        ++itr;
-    }
+    itr.resetToBegin();
   }
   return nullptr;
 }
@@ -1351,8 +1345,7 @@ bool CacheAllocator<CacheTrait>::tryEvictItem(MMContainer& mmContainer,
   auto evictHandle = accessContainer_->removeIf(item, &itemEvictionPredicate);
 
   /* We got new handle so it's safe to get rid of the old one. */
-  handle.release();
-  decRef(item);
+  handle.reset();
 
   if (!evictHandle) {
     if (item.isChainedItem())
