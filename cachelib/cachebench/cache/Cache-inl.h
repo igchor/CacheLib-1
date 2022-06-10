@@ -258,6 +258,15 @@ Cache<Allocator>::Cache(const CacheConfig& config,
 
   allocatorConfig_.cacheName = "cachebench";
 
+  allocatorConfig_.admissionPolicy = config_.admissionPolicy;
+  allocatorConfig_.evictionPolicy = config_.evictionPolicy;
+  allocatorConfig_.promotionPolicy = config_.promotionPolicy;
+  allocatorConfig_.markUsefulChance = config_.markUsefulChance;
+  allocatorConfig_.lowAllocationWatermark = config_.lowAllocationWatermark;
+  allocatorConfig_.highAllocationWatermark = config_.highAllocationWatermark;
+  allocatorConfig_.evictionWatermark = config_.evictionWatermark;
+  allocatorConfig_.allowedDuplicatedItems = config_.allowedDuplicatedItems;
+
   if (!allocatorConfig_.cacheDir.empty()) {
     cache_ =
         std::make_unique<Allocator>(Allocator::SharedMemNew, allocatorConfig_);

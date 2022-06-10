@@ -283,6 +283,21 @@ struct CacheConfig : public JSONConfig {
   // this verifies whether the feature affects throughputs.
   bool enableItemDestructor{false};
 
+  std::string admissionPolicy; // where to put allocated item
+  std::string evictionPolicy;  // where to put evicted item (where in MMContainer?)
+  std::string promotionPolicy; // which item to promote
+  uint64_t markUsefulChance; // how to mark items as useful on lower tier
+                                // TODO: this should be part of MMContainer configuration
+                                // TODO: we should allow having different memory containers
+                                // for different tiers (for PMEM, we could use MM2Q)
+  double lowAllocationWatermark; // if occupied space below, only allocate in upper tier
+                                                   // if occupied space between, consult admission policy
+                                                   // right now, random is supported
+  double highAllocationWatermark; // if occupied space above, only allocate in lower tier
+                                                   // we can still move items from PMEM to DRAM here
+  double evictionWatermark;       // starts eviction if below
+  uint64_t allowedDuplicatedItems;  // how many items can be in multiple tiers
+
   explicit CacheConfig(const folly::dynamic& configJson);
 
   CacheConfig() {}

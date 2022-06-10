@@ -578,6 +578,21 @@ class CacheAllocatorConfig {
   // skip promote children items in chained when parent fail to promote
   bool skipPromoteChildrenWhenParentFailed{false};
 
+  std::string admissionPolicy{"random"}; // where to put allocated item, used when free mem between lowAllocationWatermark and highAllocationWatermark
+  std::string evictionPolicy{""};  // where to put evicted item (where in MMContainer?)
+  std::string promotionPolicy{""}; // which item to promote
+  uint64_t markUsefulChance{128}; // how to mark items as useful on lower tier (0-128)
+                                // TODO: this should be part of MMContainer configuration
+                                // TODO: we should allow having different memory containers
+                                // for different tiers (for PMEM, we could use MM2Q)
+  double lowAllocationWatermark{100.0}; // if occupied space below, only allocate in upper tier
+                                                   // if occupied space between, consult admission policy
+                                                   // right now, random is supported
+  double highAllocationWatermark{100.0}; // if occupied space above, only allocate in lower tier
+                                                   // we can still move items from PMEM to DRAM here
+  double evictionWatermark{0.0};       // starts eviction if below
+  uint64_t allowedDuplicatedItems{0};  // how many items can be in multiple tiers
+
   friend CacheT;
 
  private:

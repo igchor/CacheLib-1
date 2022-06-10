@@ -1987,6 +1987,8 @@ class CacheAllocator : public CacheBase {
   // indicates if the shutdown of cache is in progress or not
   std::atomic<bool> shutDownInProgress_{false};
 
+  std::ACStats
+
   // END private members
 
   // Make this friend to give access to acquire and release

@@ -417,14 +417,29 @@ CacheAllocator<CacheTrait>::allocateInternalTier(TierId tid,
 }
 
 template <typename CacheTrait>
+typename CacheAllocator<CacheTrait>::TierId
+CacheAllocator<CacheTrait>::getTargetTierForItem(PoolId pid,
+                                             typename Item::Key key,
+                                             uint32_t size,
+                                             uint32_t creationTime,
+                                             uint32_t expiryTime) {
+  // TODO, also look at size and other things (depending on policy?)
+  // if (memUsage > highAllocationWatermark) return 1;
+  // else if (memUsage < highAllocationWatermark) return 0;
+  // else return random() % 2;
+
+  return 0;
+}
+
+template <typename CacheTrait>
 typename CacheAllocator<CacheTrait>::WriteHandle
 CacheAllocator<CacheTrait>::allocateInternal(PoolId pid,
                                              typename Item::Key key,
                                              uint32_t size,
                                              uint32_t creationTime,
                                              uint32_t expiryTime) {
-  auto tid = 0; /* TODO: consult admission policy */
-  for(TierId tid = 0; tid < numTiers_; ++tid) {
+  auto tid = getTargetTierForItem(pid, key, size, creationTime, expiryTime);
+  for(; tid < numTiers_; ++tid) {
     auto handle = allocateInternalTier(tid, pid, key, size, creationTime, expiryTime);
     if (handle) return handle;
   }
@@ -1849,7 +1864,13 @@ bool CacheAllocator<CacheTrait>::recordAccessInMMContainer(Item& item,
   }
 
   auto& mmContainer = getMMContainer(tid, allocInfo.poolId, allocInfo.classId);
-  return mmContainer.recordAccess(item, mode);
+
+  // TODO: it would be better to have this hidden inside recordAccess perhaps
+  // Ideally, we can have different MMContainers for different tiers
+  if (tid == 0 || folly::rand32() % 128 < config_.markUsefulChance)
+    return mmContainer.recordAccess(item, mode);
+  
+  return true;
 }
 
 template <typename CacheTrait>

@@ -100,6 +100,15 @@ CacheConfig::CacheConfig(const folly::dynamic& configJson) {
       memoryTierConfigs.push_back(MemoryTierConfig(it).getMemoryTierCacheConfig());
     }
   }
+  
+  JSONSetVal(configJson, admissionPolicy);
+  JSONSetVal(configJson, evictionPolicy);
+  JSONSetVal(configJson, promotionPolicy);
+  JSONSetVal(configJson, markUsefulChance);
+  JSONSetVal(configJson, lowAllocationWatermark);
+  JSONSetVal(configJson, highAllocationWatermark);
+  JSONSetVal(configJson, evictionWatermark);
+  JSONSetVal(configJson, allowedDuplicatedItems);
 
   // if you added new fields to the configuration, update the JSONSetVal
   // to make them available for the json configs and increment the size
