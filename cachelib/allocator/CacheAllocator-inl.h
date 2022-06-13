@@ -1226,7 +1226,7 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
     Item* toRecycle = nullptr;
     Item* candidate = nullptr;
 
-    mmContainer.withEvictionIterator([this, &candidate, &toRecycle, &searchTries](auto &&itr){
+    mmContainer.withEvictionIterator([this, &candidate, &toRecycle, &searchTries, &mmContainer](auto &&itr){
       while ((config_.evictionSearchTries == 0 ||
           config_.evictionSearchTries > searchTries) && itr) {
         ++searchTries;
@@ -1240,6 +1240,7 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
         if (candidate_->getRefCount() == 0 && candidate_->markMoving()) {
           toRecycle = toRecycle_;
           candidate = candidate_;
+          mmContainer.remove(itr);
           return;
         }
 
@@ -1258,6 +1259,9 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
     // recycles the child we intend to.
     auto toReleaseHandle =
         evictNormalItem(*candidate, true /* skipIfTokenInvalid */);
+    if (!toReleaseHandle) {
+      mmContainer.add(*candidate);
+    }
     auto ref = candidate->unmarkMoving();
 
     if (toReleaseHandle || ref == 0u) {
@@ -2641,7 +2645,8 @@ CacheAllocator<CacheTrait>::evictNormalItem(Item& item,
   XDCHECK_EQ(reinterpret_cast<uintptr_t>(handle.get()),
              reinterpret_cast<uintptr_t>(&item));
   XDCHECK_EQ(1u, handle->getRefCount());
-  removeFromMMContainer(item);
+  if (!skipIfTokenInvalid) // TMP
+    removeFromMMContainer(item);
 
   // now that we are the only handle and we actually removed something from
   // the RAM cache, we enqueue it to nvmcache.
