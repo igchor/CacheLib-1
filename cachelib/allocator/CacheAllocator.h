@@ -1581,7 +1581,15 @@ class CacheAllocator : public CacheBase {
   // @param  pid  the id of the pool to look for evictions inside
   // @param  cid  the id of the class to look for evictions inside
   // @return An evicted item or nullptr  if there is no suitable candidate.
-  Item* findEviction(PoolId pid, ClassId cid);
+  Item* findEvictionRegularItem(PoolId pid, ClassId cid);
+
+  // Implementation to find a suitable eviction from the container. The
+  // two parameters together identify a single container.
+  //
+  // @param  pid  the id of the pool to look for evictions inside
+  // @param  cid  the id of the class to look for evictions inside
+  // @return An evicted item or nullptr  if there is no suitable candidate.
+  Item* findEvictionChainedItem(PoolId pid, ClassId cid);
 
   using EvictionIterator = typename MMContainer::Iterator;
 

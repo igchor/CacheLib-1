@@ -329,7 +329,7 @@ CacheAllocator<CacheTrait>::allocateInternal(PoolId pid,
 
   void* memory = allocator_->allocate(pid, requiredSize);
   if (memory == nullptr && !config_.isEvictionDisabled()) {
-    memory = findEviction(pid, cid);
+    memory = findEvictionRegularItem(pid, cid);
   }
 
   WriteHandle handle;
@@ -405,7 +405,7 @@ CacheAllocator<CacheTrait>::allocateChainedItemInternal(
 
   void* memory = allocator_->allocate(pid, requiredSize);
   if (memory == nullptr) {
-    memory = findEviction(pid, cid);
+    memory = findEvictionChainedItem(pid, cid);
   }
   if (memory == nullptr) {
     (*stats_.allocFailures)[pid][cid].inc();
@@ -1213,7 +1213,7 @@ bool CacheAllocator<CacheTrait>::moveChainedItem(ChainedItem& oldItem,
 
 template <typename CacheTrait>
 typename CacheAllocator<CacheTrait>::Item*
-CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
+CacheAllocator<CacheTrait>::findEvictionChainedItem(PoolId pid, ClassId cid) {
   auto& mmContainer = getMMContainer(pid, cid);
 
   // Keep searching for a candidate until we were able to evict it
@@ -1306,6 +1306,118 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
         return toRecycle;
       }
     } else if (ref == 0u) {
+      // it's safe to recycle the item here as there are no more
+      // references and the item could not been marked as moving
+      // by other thread since it's detached from MMContainer.
+      if (ReleaseRes::kRecycled ==
+          releaseBackToAllocator(*candidate, RemoveContext::kEviction,
+                                 /* isNascent */ false, toRecycle)) {
+        return toRecycle;
+      }
+    }
+  }
+  return nullptr;
+}
+
+template <typename CacheTrait>
+typename CacheAllocator<CacheTrait>::Item*
+CacheAllocator<CacheTrait>::findEvictionRegularItem(PoolId pid, ClassId cid) {
+  auto& mmContainer = getMMContainer(pid, cid);
+
+  // Keep searching for a candidate until we were able to evict it
+  // or until the search limit has been exhausted
+  unsigned int searchTries = 0;
+  while ((config_.evictionSearchTries == 0 ||
+          config_.evictionSearchTries > searchTries)) {
+    ++searchTries;
+
+    Item* toRecycle = nullptr;
+    Item* candidate = nullptr;
+
+    mmContainer.withEvictionIterator(
+        [this, &candidate, &toRecycle, &searchTries, &mmContainer](auto&& itr) {
+          while ((config_.evictionSearchTries == 0 ||
+                  config_.evictionSearchTries > searchTries) &&
+                 itr) {
+            ++searchTries;
+
+            auto* toRecycle_ = itr.get();
+            auto* candidate_ =
+                toRecycle_->isChainedItem()
+                    ? &toRecycle_->asChainedItem().getParentItem(compressor_)
+                    : toRecycle_;
+
+            // make sure no other thead is evicting the item
+            if (candidate_->getRefCount() == 0 && candidate_->markMoving()) {
+              toRecycle = toRecycle_;
+              candidate = candidate_;
+              mmContainer.remove(itr);
+              return;
+            }
+
+            ++itr;
+          }
+        });
+
+    if (!toRecycle)
+      continue;
+
+    XDCHECK(toRecycle);
+    XDCHECK(candidate);
+
+    // for chained items, the ownership of the parent can change. We try to
+    // evict what we think as parent and see if the eviction of parent
+    // recycles the child we intend to.
+    auto toReleaseHandle =
+        evictNormalItem(*candidate, true /* skipIfTokenInvalid */);
+    if (!toReleaseHandle) {
+      mmContainer.add(*candidate);
+    }
+    auto ref = candidate->unmarkMoving();
+
+    if (toReleaseHandle || ref == 0u) {
+      if (candidate->hasChainedItem()) {
+        (*stats_.chainedItemEvictions)[pid][cid].inc();
+      } else {
+        (*stats_.regularItemEvictions)[pid][cid].inc();
+      }
+
+      if (auto eventTracker = getEventTracker()) {
+        eventTracker->record(
+            AllocatorApiEvent::DRAM_EVICT, toReleaseHandle->getKey(),
+            AllocatorApiResult::DRAM_EVICTED, toReleaseHandle->getSize(),
+            toReleaseHandle->getConfiguredTTL().count());
+      }
+    } else {
+      if (candidate->hasChainedItem()) {
+        stats_.evictFailParentAC.inc();
+      } else {
+        stats_.evictFailAC.inc();
+      }
+    }
+
+    if (toReleaseHandle) {
+      XDCHECK(toReleaseHandle.get() == candidate);
+      XDCHECK(toRecycle == candidate || toRecycle->isChainedItem());
+      XDCHECK_EQ(1u, toReleaseHandle->getRefCount());
+
+      // We manually release the item here because we don't want to
+      // invoke the Item Handle's destructor which will be decrementing
+      // an already zero refcount, which will throw exception
+      auto& itemToRelease = *toReleaseHandle.release();
+
+      // Decrementing the refcount because we want to recycle the item
+      const auto ref = decRef(itemToRelease);
+      XDCHECK_EQ(0u, ref);
+
+      // check if by releasing the item we intend to, we actually
+      // recycle the candidate.
+      if (ReleaseRes::kRecycled ==
+          releaseBackToAllocator(itemToRelease, RemoveContext::kEviction,
+                                 /* isNascent */ false, toRecycle)) {
+        return toRecycle;
+      }
+    } else if (ref == 0u && mmContainer.remove(*candidate) && !candidate->isMoving()) {
       // it's safe to recycle the item here as there are no more
       // references and the item could not been marked as moving
       // by other thread since it's detached from MMContainer.
@@ -2615,12 +2727,6 @@ template <typename CacheTrait>
 typename CacheAllocator<CacheTrait>::WriteHandle
 CacheAllocator<CacheTrait>::evictNormalItem(Item& item,
                                             bool skipIfTokenInvalid) {
-  XDCHECK(item.isMoving());
-
-  if (item.isOnlyMoving()) {
-    return WriteHandle{};
-  }
-
   auto predicate = [](const Item& it) { return it.getRefCount() == 0; };
 
   const bool evictToNvmCache = shouldWriteToNvmCache(item);
