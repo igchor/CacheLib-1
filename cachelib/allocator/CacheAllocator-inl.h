@@ -1234,7 +1234,7 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
     Item* candidate = nullptr;
 
     mmContainer.withEvictionIterator(
-        [this, &candidate, &toRecycle, &searchTries](auto&& itr) {
+        [this, &candidate, &toRecycle, &searchTries, &mmContainer](auto&& itr) {
           while ((config_.evictionSearchTries == 0 ||
                   config_.evictionSearchTries > searchTries) &&
                  itr) {
@@ -1250,6 +1250,10 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
             if (candidate_->getRefCount() == 0 && candidate_->markMoving()) {
               toRecycle = toRecycle_;
               candidate = candidate_;
+
+              if (!toRecycle_->isChainedItem())
+                mmContainer.remove(itr);
+
               return;
             }
 
@@ -1271,37 +1275,48 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
       // destroy toReleseHandle. The item won't be release to allocator
       // since we marked it as moving.
     }
-    const auto ref = candidate->unmarkMoving();
 
-    if (ref == 0u) {
-      // recycle the item. it's safe to do so, even if toReleaseHandle was
-      // NULL. If `ref` == 0 then it means that we are the last holder of
-      // that item.
-      if (candidate->hasChainedItem()) {
-        (*stats_.chainedItemEvictions)[pid][cid].inc();
-      } else {
-        (*stats_.regularItemEvictions)[pid][cid].inc();
+    if (!candidate->isOnlyMoving()) {
+      if (!toRecycle->isChainedItem()) {
+        mmContainer.add(*candidate);
       }
 
-      if (auto eventTracker = getEventTracker()) {
-        eventTracker->record(AllocatorApiEvent::DRAM_EVICT, candidate->getKey(),
-                             AllocatorApiResult::EVICTED, candidate->getSize(),
-                             candidate->getConfiguredTTL().count());
-      }
+      if (candidate->unmarkMoving() != 0u) {
+        if (candidate->hasChainedItem()) {
+          stats_.evictFailParentAC.inc();
+        } else {
+          stats_.evictFailAC.inc();
+        }
 
-      // check if by releasing the item we intend to, we actually
-      // recycle the candidate.
-      if (ReleaseRes::kRecycled ==
-          releaseBackToAllocator(*candidate, RemoveContext::kEviction,
-                                 /* isNascent */ false, toRecycle)) {
-        return toRecycle;
+        continue;
       }
     } else {
-      if (candidate->hasChainedItem()) {
-        stats_.evictFailParentAC.inc();
-      } else {
-        stats_.evictFailAC.inc();
-      }
+      XDCHECK(candidate->isOnlyMoving());
+      const auto ref = candidate->unmarkMoving();
+      XDCHECK_EQ(ref, 0u);
+    }
+
+    // recycle the item. it's safe to do so, even if toReleaseHandle was
+    // NULL. If `ref` == 0 then it means that we are the last holder of
+    // that item.
+    if (candidate->hasChainedItem()) {
+      (*stats_.chainedItemEvictions)[pid][cid].inc();
+    } else {
+      (*stats_.regularItemEvictions)[pid][cid].inc();
+    }
+
+    if (auto eventTracker = getEventTracker()) {
+      eventTracker->record(AllocatorApiEvent::DRAM_EVICT, candidate->getKey(),
+                            AllocatorApiResult::EVICTED, candidate->getSize(),
+                            candidate->getConfiguredTTL().count());
+    }
+
+    // check if by releasing the item we intend to, we actually
+    // recycle the candidate.
+    if (ReleaseRes::kRecycled ==
+        releaseBackToAllocator(*candidate, RemoveContext::kEviction,
+                                /* isNascent */ false, toRecycle)) {
+      return toRecycle;
     }
   }
   return nullptr;

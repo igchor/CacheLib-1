@@ -291,6 +291,7 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
     Value bitMask = ~getAdminRef<kMoving>();
     return __atomic_and_fetch(&refCount_, bitMask, __ATOMIC_ACQ_REL) & kRefMask;
   }
+
   bool isMoving() const noexcept { return getRaw() & getAdminRef<kMoving>(); }
   bool isOnlyMoving() const noexcept {
     // An item is only moving when its refcount is zero and only the moving bit
