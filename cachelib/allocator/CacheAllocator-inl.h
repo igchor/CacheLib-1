@@ -1234,7 +1234,7 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
     Item* candidate = nullptr;
 
     mmContainer.withEvictionIterator(
-        [this, &candidate, &toRecycle, &searchTries](auto&& itr) {
+        [this, &candidate, &toRecycle, &searchTries, &mmContainer](auto&& itr) {
           while ((config_.evictionSearchTries == 0 ||
                   config_.evictionSearchTries > searchTries) &&
                  itr) {
@@ -1250,6 +1250,10 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
             if (candidate_->getRefCount() == 0 && candidate_->markExclusive()) {
               toRecycle = toRecycle_;
               candidate = candidate_;
+
+              if (!toRecycle->isChainedItem())
+                mmContainer.remove(itr);
+
               return;
             }
 
@@ -1266,12 +1270,15 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
     // for chained items, the ownership of the parent can change. We try to
     // evict what we think as parent and see if the eviction of parent
     // recycles the child we intend to.
-    {
-      auto toReleaseHandle = evictNormalItem(*candidate);
-      // destroy toReleseHandle. The item won't be release to allocator
-      // since we marked it as exclusive.
-    }
-    const auto ref = candidate->unmarkExclusive();
+
+      // We remove the item from both access and mm containers. It doesn't matter
+      // if someone else calls remove on the item at this moment, the item cannot
+      // be freed as long as we have the exclusive bit set.
+      accessContainer_->remove(*candidate);
+      removeFromMMContainer(*candidate);
+
+      auto ref = candidate->unmarkExclusive();
+
 
     if (ref == 0u) {
       // recycle the item. it's safe to do so, even if toReleaseHandle was
