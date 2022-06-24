@@ -148,11 +148,11 @@ class NvmCache {
   PutToken createPutToken(folly::StringPiece key);
 
   // store the given item in navy
-  // @param hdl         handle to cache item. should not be null
+  // @param item        cache item
   // @param token       the put token for the item. this must have been
   //                    obtained before enqueueing the put to maintain
   //                    consistency
-  void put(WriteHandle& hdl, PutToken token);
+  void put(Item& item, PutToken token);
 
   // returns the current state of whether nvmcache is enabled or not. nvmcache
   // can be disabled if the backend implementation ends up in a corrupt state

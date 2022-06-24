@@ -626,6 +626,34 @@ std::ostream& operator<<(std::ostream& os, const ReadHandleImpl<T>& it) {
   }
   return os;
 }
+
+template <typename T>
+struct ExclusiveHandle {
+  using Item = T;
+  using CacheT = typename T::CacheT;
+
+  FOLLY_ALWAYS_INLINE ExclusiveHandle(Item* it, CacheT& alloc) noexcept
+      : alloc_(&alloc), it_(it) {
+        XDCHECK(it_->isExclusive());
+      }
+
+  ~ExclusiveHandle() {
+    reset();
+  }
+
+  // Releases ownership of the item.
+  void reset() {
+    alloc_->releaseExclusive(it_);
+  }
+
+private:
+   // instance of the cache this handle and item belong to.
+  CacheT* alloc_ = nullptr;
+
+  // pointer to item
+  Item* it_ = nullptr;
+};
+
 } // namespace detail
 } // namespace cachelib
 } // namespace facebook

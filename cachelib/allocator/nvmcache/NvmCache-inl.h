@@ -439,12 +439,10 @@ std::unique_ptr<NvmItem> NvmCache<C>::makeNvmItem(const WriteHandle& hdl) {
 }
 
 template <typename C>
-void NvmCache<C>::put(WriteHandle& hdl, PutToken token) {
+void NvmCache<C>::put(Item& item, PutToken token) {
   util::LatencyTracker tracker(stats().nvmInsertLatency_);
-  HashedKey hk{hdl->getKey()};
+  HashedKey hk{item.getKey()};
 
-  XDCHECK(hdl);
-  auto& item = *hdl;
   // for regular items that can only write to nvmcache upon eviction, we
   // should not be recording a write for an nvmclean item unless it is marked
   // as evicted from nvmcache.

@@ -1722,11 +1722,14 @@ class CacheAllocator : public CacheBase {
                            Item& item,
                            util::Throttler& throttler);
 
-  // Helper function to evict a normal item for slab release
+  void releaseExclusive(Item* item);
+
+  // Helper function to evict a normal item for slab release and
+  // eviction. It requires item to be marked exclusive.
   //
-  // @return last handle for corresponding to item on success. empty handle on
-  // failure. caller can retry if needed.
-  WriteHandle evictNormalItem(Item& item);
+  // @return true on success, false otherwise
+  template <typename Predicate>
+  ExclusiveHandle<Item> evictNormalItem(Item& item, Predicate&& predicate);
 
   // Helper function to evict a child item for slab release
   // As a side effect, the parent item is also evicted
