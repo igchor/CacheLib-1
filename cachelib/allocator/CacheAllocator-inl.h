@@ -721,6 +721,7 @@ CacheAllocator<CacheTrait>::replaceChainedItemLocked(Item& oldItem,
 template <typename CacheTrait>
 typename CacheAllocator<CacheTrait>::ReleaseRes
 CacheAllocator<CacheTrait>::releaseBackToAllocator(Item& it,
+                                                   RemoveContext ctx,
                                                    bool nascent,
                                                    const Item* toRecycle) {
   if (!it.isDrained()) {
@@ -730,7 +731,7 @@ CacheAllocator<CacheTrait>::releaseBackToAllocator(Item& it,
 
   const auto allocInfo = allocator_->getAllocInfo(it.getMemory());
 
-  if (it.isExclusive()) {
+  if (ctx == RemoveContext::kEviction) {
     const auto timeNow = util::getCurrentTimeSec();
     const auto refreshTime = timeNow - it.getLastAccessTime();
     const auto lifeTime = timeNow - it.getCreationTime();
@@ -767,7 +768,8 @@ CacheAllocator<CacheTrait>::releaseBackToAllocator(Item& it,
   // only skip destructor for evicted items that are either in the queue to put
   // into nvm or already in nvm
   if (!nascent && config_.itemDestructor &&
-      (!it.isExclusive() || !it.isNvmClean() || it.isNvmEvicted())) {
+      (ctx != RemoveContext::kEviction || !it.isNvmClean() ||
+       it.isNvmEvicted())) {
     try {
       config_.itemDestructor(DestructorData{
           ctx, it, viewAsChainedAllocsRange(it), allocInfo.poolId});
@@ -1264,10 +1266,9 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
     // for chained items, the ownership of the parent can change. We try to
     // evict what we think as parent and see if the eviction of parent
     // recycles the child we intend to.
-    if (evictNormalItem(*candidate)) {
-      // recycle the item. it's safe to do so, even if toReleaseHandle was
-      // NULL. If `ref` == 0 then it means that we are the last holder of
-      // that item.
+    auto exclusiveHandle = evictNormalItem(*candidate, itemExlusivePredicate);
+
+    if (exclusiveHandle->isOnlyExclusive()) {
       if (candidate->hasChainedItem()) {
         (*stats_.chainedItemEvictions)[pid][cid].inc();
       } else {
@@ -1280,10 +1281,13 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
                              candidate->getConfiguredTTL().count());
       }
 
+      auto ref = candidate->unmarkExclusive();
+      XDCHECK_EQ(ref, 0u);
+
       // check if by releasing the item we intend to, we actually
       // recycle the candidate.
       if (ReleaseRes::kRecycled ==
-          releaseBackToAllocator(*candidate, RemoveContext::kEviction,
+          releaseBackToAllocator(*exclusiveHandle.release(), RemoveContext::kEviction,
                                  /* isNascent */ false, toRecycle)) {
         return toRecycle;
       }
@@ -2522,7 +2526,7 @@ void CacheAllocator<CacheTrait>::evictForSlabRelease(
     auto exclusiveHandle =
         // item.isChainedItem()
         //     ? evictChainedItemForSlabRelease(item.asChainedItem())
-        evictNormalItem(item, alwaysEvictPredicate);
+        evictNormalItem(item, itemEvictAlwaysPredicate);
 
     XDCHECK(exclusiveHandle);
 
@@ -2547,10 +2551,8 @@ void CacheAllocator<CacheTrait>::evictForSlabRelease(
       // we have the last handle. no longer need to hold on to the exclusive bit
       item.unmarkExclusive();
 
-      // manually decrement the refcount to call releaseBackToAllocator
-      const auto ref = decRef(*owningHandle);
-      XDCHECK(ref == 0);
-      const auto res = releaseBackToAllocator(*owningHandle.release(),
+      XDCHECK_EQ(item.getRefCount(), 0u);
+      const auto res = releaseBackToAllocator(*exclusiveHandle.release(),
                                               RemoveContext::kEviction, false);
       XDCHECK(res == ReleaseRes::kReleased);
       return;
@@ -2583,9 +2585,10 @@ void CacheAllocator<CacheTrait>::evictForSlabRelease(
 template <typename CacheTrait>
 void CacheAllocator<CacheTrait>::releaseExclusive(Item* item)
 {
-  if (item->unmarkMoving() == 0u) {
-    const auto res =
-        releaseBackToAllocator(*item, RemoveContext::kNormal, isNascent);
+  XDCHECK(item->isExclusive());
+  if (item->unmarkExclusive() == 0u) {
+    const auto res = releaseBackToAllocator(*item, RemoveContext::kNormal,
+      false /* is nascent */);
     XDCHECK(res == ReleaseRes::kReleased);
   }
 }

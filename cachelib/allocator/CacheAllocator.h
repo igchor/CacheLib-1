@@ -1862,6 +1862,10 @@ class CacheAllocator : public CacheBase {
     return item.getRefCount() == 0;
   }
 
+  static bool itemEvictAlwaysPredicate(const Item&) {
+    return true;
+  }
+
   static bool itemExpiryPredicate(const Item& item) {
     return item.getRefCount() == 1 && item.isExpired();
   }

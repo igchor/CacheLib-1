@@ -632,6 +632,13 @@ struct ExclusiveHandle {
   using Item = T;
   using CacheT = typename T::CacheT;
 
+  ExclusiveHandle() = default;
+  ExclusiveHandle(const ExclusiveHandle&) = delete;
+  ExclusiveHandle(ExclusiveHandle&&) = default;
+
+  ExclusiveHandle& operator=(const ExclusiveHandle&) = delete;
+  ExclusiveHandle& operator=(ExclusiveHandle&&) = default;
+
   FOLLY_ALWAYS_INLINE ExclusiveHandle(Item* it, CacheT& alloc) noexcept
       : alloc_(&alloc), it_(it) {
         XDCHECK(it_->isExclusive());
@@ -641,9 +648,26 @@ struct ExclusiveHandle {
     reset();
   }
 
+  FOLLY_ALWAYS_INLINE Item* get() const noexcept {
+    return it_;
+  }
+
+  FOLLY_ALWAYS_INLINE explicit operator bool() const noexcept {
+    return get() != nullptr;
+  }
+
   // Releases ownership of the item.
-  void reset() {
-    alloc_->releaseExclusive(it_);
+  FOLLY_ALWAYS_INLINE void reset() {
+    if (it_) {
+      alloc_->releaseExclusive(it_);
+      it_ = nullptr;
+    }
+  }
+
+  FOLLY_ALWAYS_INLINE Item *release() {
+    auto item = it_;
+    it_ = nullptr;
+    return item;
   }
 
 private:
