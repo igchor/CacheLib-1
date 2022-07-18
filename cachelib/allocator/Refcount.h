@@ -160,6 +160,32 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
     }
   }
 
+  FOLLY_ALWAYS_INLINE bool incRefIfNotMoving() noexcept {
+    Value* const refPtr = &refCount_;
+    unsigned int nCASFailures = 0;
+    constexpr bool isWeak = false;
+    Value oldVal = __atomic_load_n(refPtr, __ATOMIC_RELAXED);
+
+    while (true) {
+      const Value newCount = oldVal + static_cast<Value>(1);
+      if (UNLIKELY((oldVal & kAccessRefMask) == (kAccessRefMask) || oldVal & getAdminRef<kExclusive>())) {
+        return false;
+      }
+
+      if (__atomic_compare_exchange_n(refPtr, &oldVal, newCount, isWeak,
+                                      __ATOMIC_ACQ_REL, __ATOMIC_RELAXED)) {
+        return true;
+      }
+
+      if ((++nCASFailures % 4) == 0) {
+        // this pause takes up to 40 clock cycles on intel and the lock cmpxchgl
+        // above should take about 100 clock cycles. we pause once every 400
+        // cycles or so if we are extremely unlucky.
+        folly::asm_volatile_pause();
+      }
+    }
+  }
+
   // Bumps down the reference count
   //
   // @return Refcount with control bits. When it is zero, we know for
@@ -288,6 +314,39 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
       }
     }
   }
+
+  bool markExclusiveIfRefZero() noexcept {
+    Value bitMask = getAdminRef<kExclusive>();
+    Value conditionBitMask = getAdminRef<kLinked>();
+
+    Value* const refPtr = &refCount_;
+    Value curValue = __atomic_load_n(refPtr, __ATOMIC_RELAXED);
+    unsigned int nCASFailures = 0;
+    constexpr bool isWeak = false;
+    while (true) {
+      const bool flagSet = curValue & conditionBitMask;
+      const bool refCount = curValue & kAccessRefMask;
+      const bool alreadyExclusive = curValue & bitMask;
+      if (!flagSet || alreadyExclusive || refCount) {
+        return false;
+      }
+
+      const Value newValue = curValue | bitMask;
+      if (__atomic_compare_exchange_n(refPtr, &curValue, newValue, isWeak,
+                                      __ATOMIC_ACQ_REL, __ATOMIC_RELAXED)) {
+        XDCHECK(newValue & conditionBitMask);
+        return true;
+      }
+
+      if ((++nCASFailures % 4) == 0) {
+        // this pause takes up to 40 clock cycles on intel and the lock cmpxchgl
+        // above should take about 100 clock cycles. we pause once every 400
+        // cycles or so if we are extremely unlucky.
+        folly::asm_volatile_pause();
+      }
+    }
+  }
+
   Value unmarkExclusive() noexcept {
     Value bitMask = ~getAdminRef<kExclusive>();
     return __atomic_and_fetch(&refCount_, bitMask, __ATOMIC_ACQ_REL) & kRefMask;
