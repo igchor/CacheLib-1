@@ -93,6 +93,8 @@ struct Stats {
   uint64_t numNvmRejectsByExpiry{0};
   uint64_t numNvmRejectsByClean{0};
 
+  uint64_t numEvictionFailureFromConcurrentFill{0};
+
   uint64_t inconsistencyCount{0};
   bool isNvmCacheDisabled{false};
   uint64_t invalidDestructorCount{0};
@@ -111,6 +113,10 @@ struct Stats {
     const double overallHitRatio = invertPctFn(totalMisses, numCacheGets);
     out << folly::sformat("Items in RAM  : {:,}", numItems) << std::endl;
     out << folly::sformat("Items in NVM  : {:,}", numNvmItems) << std::endl;
+
+    out << folly::sformat("numEvictionFailureFromConcurrentFill : {:,}",
+                          numEvictionFailureFromConcurrentFill)
+        << std::endl;
 
     out << folly::sformat("Alloc Attempts: {:,} Success: {:.2f}%",
                           allocAttempts,

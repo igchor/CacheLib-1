@@ -601,6 +601,8 @@ Stats Cache<Allocator>::getStats() const {
         lookup("navy_device_write_latency_us_p999999");
     ret.nvmWriteLatencyMicrosP100 = lookup("navy_device_write_latency_us_p100");
     ret.numNvmItemRemovedSetSize = lookup("items_tracked_for_destructor");
+    ret.numEvictionFailureFromConcurrentFill =
+        cacheStats.numEvictionFailureFromConcurrentFill;
 
     // track any non-zero check sum errors or io errors
     for (const auto& [k, v] : navyStats) {
