@@ -2612,6 +2612,10 @@ CacheAllocator<CacheTrait>::evictNormalItem(Item& item) {
   const bool evictToNvmCache = shouldWriteToNvmCache(item);
   auto token = evictToNvmCache ? nvmCache_->createPutToken(item.getKey())
                                : typename NvmCacheT::PutToken{};
+  if (evictToNvmCache && !token.isValid()) {
+    stats_.evictFailConcurrentFill.inc();
+    return WriteHandle{};
+  }
 
   // We remove the item from both access and mm containers. It doesn't matter
   // if someone else calls remove on the item at this moment, the item cannot
