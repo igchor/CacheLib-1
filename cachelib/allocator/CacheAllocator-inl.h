@@ -1248,7 +1248,7 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
                     : toRecycle_;
 
             // make sure no other thead is evicting the item
-            if (candidate_->getRefCount() == 0 && candidate_->markExclusive()) {
+            if (candidate_->markExclusiveIfRefZero()) {
               toRecycle = toRecycle_;
               candidate = candidate_;
               return;

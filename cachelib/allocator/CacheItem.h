@@ -353,6 +353,7 @@ class CACHELIB_PACKED_ATTR CacheItem {
    * Unmarking exclusive does not depend on `isInMMContainer`
    */
   bool markExclusive() noexcept;
+  bool markExclusiveIfRefZero() noexcept;
   RefcountWithFlags::Value unmarkExclusive() noexcept;
   bool isExclusive() const noexcept;
   bool isOnlyExclusive() const noexcept;
