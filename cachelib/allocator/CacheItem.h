@@ -310,6 +310,10 @@ class CACHELIB_PACKED_ATTR CacheItem {
         folly::sformat("Refcount maxed out. item: {}", toString()));
   }
 
+  FOLLY_ALWAYS_INLINE bool incRefIfNotMoving() {
+    return ref_.incRefIfNotMoving();
+  }
+
   FOLLY_ALWAYS_INLINE RefcountWithFlags::Value decRef() {
     return ref_.decRef();
   }
@@ -353,6 +357,7 @@ class CACHELIB_PACKED_ATTR CacheItem {
    * Unmarking exclusive does not depend on `isInMMContainer`
    */
   bool markExclusive() noexcept;
+  bool markExclusiveIfRefZero() noexcept;
   RefcountWithFlags::Value unmarkExclusive() noexcept;
   bool isExclusive() const noexcept;
   bool isOnlyExclusive() const noexcept;

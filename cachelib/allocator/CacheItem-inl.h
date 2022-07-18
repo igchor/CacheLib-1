@@ -215,6 +215,11 @@ bool CacheItem<CacheTrait>::markExclusive() noexcept {
 }
 
 template <typename CacheTrait>
+bool CacheItem<CacheTrait>::markExclusiveIfRefZero() noexcept {
+  return ref_.markExclusiveIfRefZero();
+}
+
+template <typename CacheTrait>
 RefcountWithFlags::Value CacheItem<CacheTrait>::unmarkExclusive() noexcept {
   return ref_.unmarkExclusive();
 }

@@ -1419,6 +1419,19 @@ class CacheAllocator : public CacheBase {
   //
   // @throw std::overflow_error is the maximum item refcount is execeeded by
   //        creating this item handle.
+  WriteHandle findInternalIfNotMoving(Key key) {
+    // Note: this method can not be const because we need  a non-const
+    // reference to create the ItemReleaser.
+    return accessContainer_->findCustom(key, [&](Item *item){
+      if (item && item->incRefIfNotMoving()) {
+        ++handleCount_.tlStats();
+        return WriteHandle(item, *this);
+      }
+
+      return WriteHandle(nullptr);
+    });
+  }
+
   WriteHandle findInternal(Key key) {
     // Note: this method can not be const because we need  a non-const
     // reference to create the ItemReleaser.

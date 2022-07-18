@@ -463,6 +463,17 @@ typename T::Handle ChainedHashTable::Container<T, HookPtr, LockT>::find(
 template <typename T,
           typename ChainedHashTable::Hook<T> T::*HookPtr,
           typename LockT>
+template <typename F>
+typename T::Handle ChainedHashTable::Container<T, HookPtr, LockT>::findCustom(
+    Key key, F&& handleMaker) const {
+  const auto bucket = ht_.getBucket(key);
+  auto l = locks_.lockShared(bucket);
+  return handleMaker(ht_.findInBucket(key, bucket));
+}
+
+template <typename T,
+          typename ChainedHashTable::Hook<T> T::*HookPtr,
+          typename LockT>
 serialization::ChainedHashTableObject
 ChainedHashTable::Container<T, HookPtr, LockT>::saveState() const {
   if (!ht_.isRestorable()) {

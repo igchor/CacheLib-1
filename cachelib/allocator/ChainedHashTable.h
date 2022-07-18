@@ -496,6 +496,9 @@ class ChainedHashTable {
     //        creating this item handle.
     Handle find(Key key) const;
 
+    template <typename F>
+    Handle findCustom(Key key, F&& handleMaker) const;
+
     // for saving the state of the hash table
     //
     // precondition:  serialization must happen without any reader or writer
