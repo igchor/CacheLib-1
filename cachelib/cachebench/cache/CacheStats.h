@@ -349,8 +349,8 @@ struct Stats {
     if (slabsReleased > 0) {
       out << folly::sformat(
                  "Released {:,} slabs\n"
-                 "  Moves     : attempts: {:10,}, success: {:6.2f}%\n"
-                 "  Evictions : attempts: {:10,}, success: {:6.2f}%",
+                 "  Moves      attempts: {:10,}, success: {:6.2f}%\n"
+                 "  Evictions  attempts: {:10,}, success: {:6.2f}%",
                  slabsReleased,
                  moveAttemptsForSlabRelease,
                  pctFn(moveSuccessesForSlabRelease, moveAttemptsForSlabRelease),
@@ -370,14 +370,14 @@ struct Stats {
     if (!backgroundEvictionClasses.empty() && backgndEvicStats.nEvictedItems > 0 ) {
       out << "== Class Background Eviction Counters Map ==" << std::endl;
       for (const auto& it : backgroundEvictionClasses) {
-        out << it.first << "  :  " << it.second << std::endl;
+        out << "Eviction Class " << it.first << "  :  " << it.second << std::endl;
       }
     }
     
     if (!backgroundPromotionClasses.empty() && backgndPromoStats.nPromotedItems > 0) {
       out << "== Class Background Promotion Counters Map ==" << std::endl;
       for (const auto& it : backgroundPromotionClasses) {
-        out << it.first << "  :  " << it.second << std::endl;
+        out << "Promotion Class " << it.first << "  :  " << it.second << std::endl;
       }
     }
 
