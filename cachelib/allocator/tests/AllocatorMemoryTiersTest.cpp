@@ -23,12 +23,21 @@ namespace tests {
 using LruAllocatorMemoryTiersTest = AllocatorMemoryTiersTest<LruAllocator>;
 
 // TODO(MEMORY_TIER): add more tests with different eviction policies
-TEST_F(LruAllocatorMemoryTiersTest, MultiTiersInvalid) { this->testMultiTiersInvalid(); }
-TEST_F(LruAllocatorMemoryTiersTest, MultiTiersValid) { this->testMultiTiersValid(); }
-TEST_F(LruAllocatorMemoryTiersTest, MultiTiersValidMixed) { this->testMultiTiersValidMixed(); }
-TEST_F(LruAllocatorMemoryTiersTest, MultiTiersForceTierAllocation) { this->testMultiTiersForceTierAllocation(); }
-TEST_F(LruAllocatorMemoryTiersTest, MultiTiersWatermarkTierAllocation) { this->testMultiTiersWatermarkAllocation(); }
-TEST_F(LruAllocatorMemoryTiersTest, MultiTiersSyncEviction) { this->testSyncEviction(); }
+TEST_F(LruAllocatorMemoryTiersTest, MultiTiersInvalid) {
+    this->testMultiTiersInvalid(); }
+TEST_F(LruAllocatorMemoryTiersTest, MultiTiersValid) {
+    this->testMultiTiersValid(); }
+TEST_F(LruAllocatorMemoryTiersTest, MultiTiersValidMixed) {
+    this->testMultiTiersValidMixed(); }
+TEST_F(LruAllocatorMemoryTiersTest, MultiTiersForceTierAllocation) {
+    this->testMultiTiersForceTierAllocation(); }
+TEST_F(LruAllocatorMemoryTiersTest, MultiTiersWatermarkTierAllocation) {
+    this->testMultiTiersWatermarkAllocation(); }
+TEST_F(LruAllocatorMemoryTiersTest, MultiTiersSyncEviction) {
+    this->testSyncEviction(); }
+TEST_F(LruAllocatorMemoryTiersTest, MultiTiersDisableEvictionToMemory) {
+    this->testMultiTiersDisableEvictionToMemory(); }
+
 
 } // end of namespace tests
 } // end of namespace cachelib

@@ -221,6 +221,61 @@ class AllocatorMemoryTiersTest : public AllocatorTest<AllocatorT> {
         alloc.getCacheMemoryStats().slabsApproxFreePercentages[1]);
     }
   }
+
+  void testMultiTiersDisableEvictionToMemory () {
+    auto config = makeDefaultConfig();
+    config.setCacheSize(4 * Slab::kSize);
+    //Always allocate to fist tier.
+    config.forceAllocationTier = 0;
+    //Don't evict to memory.
+    config.disableEvictionToMemory = true;
+    {
+      AllocatorT alloc(AllocatorT::SharedMemNew, config);
+      auto pool = alloc.addPool("default",
+                                alloc.getCacheMemoryStats().cacheSize);
+      {
+        //Allocate first key.
+        auto handle = alloc.allocate(pool, "key1", Slab::kSize / 2);
+        ASSERT(handle != nullptr);
+        std::string data = "lorem ipsum the first";
+        std::memcpy(reinterpret_cast<char*>(handle->getMemory()), data.data(),
+                    data.size());
+        alloc.insertOrReplace(handle);
+        //Item in the first tier.
+        ASSERT_NE(alloc.getCacheMemoryStats().slabsApproxFreePercentages[0],
+                  100.0);
+        //Second tier is empty.
+        ASSERT_EQ(alloc.getCacheMemoryStats().slabsApproxFreePercentages[1],
+                  100.0);
+      }
+      {
+        //Allocate second key.
+        auto handle = alloc.allocate(pool, "key2", Slab::kSize / 2);
+        ASSERT(handle != nullptr);
+        std::string data2 = "lorem ipsum the second";
+        std::memcpy(reinterpret_cast<char*>(handle->getMemory()), data2.data(),
+                    data2.size());
+        alloc.insertOrReplace(handle);
+        //Item in the first tier.
+        ASSERT_NE(alloc.getCacheMemoryStats().slabsApproxFreePercentages[0],
+                  100.0);
+        //Second tier is empty.
+        ASSERT_EQ(alloc.getCacheMemoryStats().slabsApproxFreePercentages[1],
+                  100.0);
+      }
+      {
+        //Check if key1 was evicted.
+        auto found = alloc.find("key1");
+        ASSERT_EQ(found, nullptr);
+      }
+      {
+        //Check if key2 is present.
+        auto found = alloc.find("key2");
+        ASSERT_NE(found, nullptr);
+        ASSERT_EQ(found->getSize(), Slab::kSize / 2);
+      }
+    }
+  }
 };
 } // namespace tests
 } // namespace cachelib
