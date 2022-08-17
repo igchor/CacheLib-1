@@ -19,27 +19,37 @@ namespace cachelib {
 
 
 template <typename CacheT>
-BackgroundEvictor<CacheT>::BackgroundEvictor(Cache& cache,
-                               std::shared_ptr<BackgroundEvictorStrategy> strategy)
+BackgroundMover<CacheT>::BackgroundMover(Cache& cache,
+                               std::shared_ptr<BackgroundMoverStrategy> strategy, 
+                               MoverDir direction)
     : cache_(cache),
-      strategy_(strategy)
+      strategy_(strategy),
+      direction_(direction)
 {
+    if (direction_ == MoverDir::Evict) {
+        moverFunc = 
+            BackgroundMoverAPIWrapper<CacheT>::traverseAndEvictItems;
+
+    } else if (direction_ == MoverDir::Promote) {
+        moverFunc = 
+            BackgroundMoverAPIWrapper<CacheT>::traverseAndPromoteItems;
+    }
 }
 
 template <typename CacheT>
-BackgroundEvictor<CacheT>::~BackgroundEvictor() { stop(std::chrono::seconds(0)); }
+BackgroundMover<CacheT>::~BackgroundMover() { stop(std::chrono::seconds(0)); }
 
 template <typename CacheT>
-void BackgroundEvictor<CacheT>::work() {
+void BackgroundMover<CacheT>::work() {
   try {
     checkAndRun();
   } catch (const std::exception& ex) {
-    XLOGF(ERR, "BackgroundEvictor interrupted due to exception: {}", ex.what());
+    XLOGF(ERR, "BackgroundMover interrupted due to exception: {}", ex.what());
   }
 }
 
 template <typename CacheT>
-void BackgroundEvictor<CacheT>::setAssignedMemory(std::vector<std::tuple<TierId, PoolId, ClassId>> &&assignedMemory)
+void BackgroundMover<CacheT>::setAssignedMemory(std::vector<std::tuple<TierId, PoolId, ClassId>> &&assignedMemory)
 {
   XLOG(INFO, "Class assigned to background worker:");
   for (auto [tid, pid, cid] : assignedMemory) {
@@ -54,12 +64,12 @@ void BackgroundEvictor<CacheT>::setAssignedMemory(std::vector<std::tuple<TierId,
 // Look for classes that exceed the target memory capacity
 // and return those for eviction
 template <typename CacheT>
-void BackgroundEvictor<CacheT>::checkAndRun() {
+void BackgroundMover<CacheT>::checkAndRun() {
   auto assignedMemory = mutex.lock_combine([this]{
     return assignedMemory_;
   });
 
-  unsigned int evictions = 0;
+  unsigned int moves = 0;
   std::set<ClassId> classes{};
   auto batches = strategy_->calculateBatchSizes(cache_,assignedMemory);
 
@@ -74,36 +84,34 @@ void BackgroundEvictor<CacheT>::checkAndRun() {
       continue;
     }
 
-    stats.evictionSize.add(batch * mpStats.acStats.at(cid).allocSize);
+    totalBytesMoved.add(batch * mpStats.acStats.at(cid).allocSize);
   
-    //try evicting BATCH items from the class in order to reach free target
-    auto evicted =
-        BackgroundEvictorAPIWrapper<CacheT>::traverseAndEvictItems(cache_,
-            tid,pid,cid,batch);
-    evictions += evicted;
-    evictions_per_class_[tid][pid][cid] += evicted;
+    //try moving BATCH items from the class in order to reach free target
+    auto moved = moverFunc(cache_,tid,pid,cid,batch);
+    moves += moved;
+    moves_per_class_[tid][pid][cid] += moved;
   }
 
-  stats.numTraversals.inc();
-  stats.numEvictedItems.add(evictions);
-  stats.totalClasses.add(classes.size());
+  numTraversals.inc();
+  numMovedItems.add(moves);
+  totalClasses.add(classes.size());
 }
 
 template <typename CacheT>
-BackgroundEvictionStats BackgroundEvictor<CacheT>::getStats() const noexcept {
-  BackgroundEvictionStats evicStats;
-  evicStats.numEvictedItems = stats.numEvictedItems.get();
-  evicStats.runCount = stats.numTraversals.get();
-  evicStats.evictionSize = stats.evictionSize.get();
-  evicStats.totalClasses = stats.totalClasses.get();
+BackgroundMoverStats BackgroundMover<CacheT>::getStats() const noexcept {
+  BackgroundMoverStats stats;
+  stats.numMovedItems = numMovedItems.get();
+  stats.runCount = numTraversals.get();
+  stats.totalBytesMoved = totalBytesMoved.get();
+  stats.totalClasses = totalClasses.get();
 
-  return evicStats;
+  return stats;
 }
 
 template <typename CacheT>
 std::map<TierId, std::map<PoolId, std::map<ClassId, uint64_t>>>
-BackgroundEvictor<CacheT>::getClassStats() const noexcept {
-  return evictions_per_class_;
+BackgroundMover<CacheT>::getClassStats() const noexcept {
+  return moves_per_class_;
 }
 
 } // namespace cachelib
