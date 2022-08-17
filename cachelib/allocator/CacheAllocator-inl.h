@@ -3803,8 +3803,8 @@ GlobalCacheStats CacheAllocator<CacheTrait>::getGlobalCacheStats() const {
   ret.nvmCacheEnabled = nvmCache_ ? nvmCache_->isEnabled() : false;
   ret.nvmUpTime = currTime - getNVMCacheCreationTime();
   ret.reaperStats = getReaperStats();
-  ret.evictionStats = getBackgroundEvictorStats();
-  ret.promotionStats = getBackgroundPromoterStats();
+  ret.evictionStats = getBackgroundMoverStats(MoverDir::Evict);
+  ret.promotionStats = getBackgroundMoverStats(MoverDir::Promote);
   ret.numActiveHandles = getNumActiveHandles();
 
   return ret;
@@ -3966,14 +3966,14 @@ auto CacheAllocator<CacheTrait>::getAssignedMemoryToBgWorker(size_t evictorId, s
 template <typename CacheTrait>
 bool CacheAllocator<CacheTrait>::startNewBackgroundEvictor(
     std::chrono::milliseconds interval,
-    std::shared_ptr<BackgroundEvictorStrategy> strategy,
+    std::shared_ptr<BackgroundMoverStrategy> strategy,
     size_t threads) {
   XDCHECK(threads > 0);
   backgroundEvictor_.resize(threads);
   bool result = true;
 
   for (size_t i = 0; i < threads; i++) {
-    auto ret = startNewWorker("BackgroundEvictor" + std::to_string(i), backgroundEvictor_[i], interval, strategy);
+    auto ret = startNewWorker("BackgroundEvictor" + std::to_string(i), backgroundEvictor_[i], interval, strategy, MoverDir::Evict);
     result = result && ret;
 
     if (result) {
@@ -3986,7 +3986,7 @@ bool CacheAllocator<CacheTrait>::startNewBackgroundEvictor(
 template <typename CacheTrait>
 bool CacheAllocator<CacheTrait>::startNewBackgroundPromoter(
     std::chrono::milliseconds interval,
-    std::shared_ptr<BackgroundEvictorStrategy> strategy,
+    std::shared_ptr<BackgroundMoverStrategy> strategy,
     size_t threads) {
   XDCHECK(threads > 0);
   XDCHECK(numTiers_ > 1);
@@ -3994,7 +3994,7 @@ bool CacheAllocator<CacheTrait>::startNewBackgroundPromoter(
   bool result = true;
 
   for (size_t i = 0; i < threads; i++) {
-    auto ret = startNewWorker("BackgroundPromoter" + std::to_string(i), backgroundPromoter_[i], interval, strategy);
+    auto ret = startNewWorker("BackgroundPromoter" + std::to_string(i), backgroundPromoter_[i], interval, strategy, MoverDir::Promote);
     result = result && ret;
 
     if (result) {

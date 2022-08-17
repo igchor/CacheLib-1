@@ -22,7 +22,7 @@ namespace facebook {
 namespace cachelib {
 
 // Base class for background eviction strategy.
-class BackgroundEvictorStrategy {
+class BackgroundMoverStrategy {
 
 public:
   virtual std::vector<size_t> calculateBatchSizes(const CacheBase& cache,

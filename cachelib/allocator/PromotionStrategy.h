@@ -17,14 +17,14 @@
 #pragma once
 
 #include "cachelib/allocator/Cache.h"
-#include "cachelib/allocator/BackgroundEvictorStrategy.h"
+#include "cachelib/allocator/BackgroundMoverStrategy.h"
 
 namespace facebook {
 namespace cachelib {
 
 
 // Base class for background eviction strategy.
-class PromotionStrategy : public BackgroundEvictorStrategy {
+class PromotionStrategy : public BackgroundMoverStrategy {
 
 public:
   PromotionStrategy(uint64_t promotionAcWatermark, uint64_t maxPromotionBatch, uint64_t minPromotionBatch):

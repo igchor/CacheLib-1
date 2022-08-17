@@ -20,7 +20,7 @@
 
 #include "cachelib/allocator/CacheAllocator.h"
 #include "cachelib/allocator/RebalanceStrategy.h"
-#include "cachelib/allocator/BackgroundEvictorStrategy.h"
+#include "cachelib/allocator/BackgroundMoverStrategy.h"
 #include "cachelib/cachebench/util/JSONConfig.h"
 #include "cachelib/common/Ticker.h"
 #include "cachelib/navy/common/Device.h"
@@ -324,8 +324,8 @@ struct CacheConfig : public JSONConfig {
   CacheConfig() {}
 
   std::shared_ptr<RebalanceStrategy> getRebalanceStrategy() const;
-  std::shared_ptr<BackgroundEvictorStrategy> getBackgroundEvictorStrategy() const;
-  std::shared_ptr<BackgroundEvictorStrategy> getBackgroundPromoterStrategy() const;
+  std::shared_ptr<BackgroundMoverStrategy> getBackgroundEvictorStrategy() const;
+  std::shared_ptr<BackgroundMoverStrategy> getBackgroundPromoterStrategy() const;
 };
 } // namespace cachebench
 } // namespace cachelib

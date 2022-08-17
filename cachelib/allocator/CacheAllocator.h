@@ -36,8 +36,7 @@
 #include <folly/Format.h>
 #include <folly/Range.h>
 #pragma GCC diagnostic pop
-#include "cachelib/allocator/BackgroundEvictor.h"
-#include "cachelib/allocator/BackgroundPromoter.h"
+#include "cachelib/allocator/BackgroundMover.h"
 #include "cachelib/allocator/CCacheManager.h"
 #include "cachelib/allocator/Cache.h"
 #include "cachelib/allocator/CacheAllocatorConfig.h"
@@ -949,10 +948,10 @@ class CacheAllocator : public CacheBase {
   bool startNewReaper(std::chrono::milliseconds interval,
                       util::Throttler::Config reaperThrottleConfig);
   
-  bool startNewBackgroundEvictor(std::chrono::milliseconds interval,
-                      std::shared_ptr<BackgroundEvictorStrategy> strategy, size_t threads);
   bool startNewBackgroundPromoter(std::chrono::milliseconds interval,
-                      std::shared_ptr<BackgroundEvictorStrategy> strategy, size_t threads);
+                      std::shared_ptr<BackgroundMoverStrategy> strategy, size_t threads);
+  bool startNewBackgroundEvictor(std::chrono::milliseconds interval,
+                      std::shared_ptr<BackgroundMoverStrategy> strategy, size_t threads);
 
   // Stop existing workers with a timeout
   bool stopPoolRebalancer(std::chrono::seconds timeout = std::chrono::seconds{
@@ -1049,54 +1048,51 @@ class CacheAllocator : public CacheBase {
     return stats;
   }
   
-  // returns the background evictor
-  BackgroundEvictionStats getBackgroundEvictorStats() const {
-    auto stats = BackgroundEvictionStats{};
-    for (auto &bg : backgroundEvictor_)
-      stats += bg->getStats();
+  // returns the background mover stats
+  BackgroundMoverStats getBackgroundMoverStats(MoverDir direction) const {
+    
+    auto stats = BackgroundMoverStats{};
+    if (direction == MoverDir::Evict) {
+        for (auto &bg : backgroundEvictor_)
+          stats += bg->getStats();
+    } else if (direction == MoverDir::Promote) {
+        for (auto &bg : backgroundPromoter_)
+          stats += bg->getStats();
+    }
     return stats;
+
   }
   
-  BackgroundPromotionStats getBackgroundPromoterStats() const {
-    auto stats = BackgroundPromotionStats{};
-    for (auto &bg : backgroundPromoter_)
-      stats += bg->getStats();
-    return stats;
-  }
   
   std::map<TierId, std::map<PoolId, std::map<ClassId, uint64_t>>>
-  getBackgroundEvictorClassStats() const {
+  getBackgroundMoverClassStats(MoverDir direction) const {
     std::map<TierId, std::map<PoolId, std::map<ClassId, uint64_t>>> stats;
 
-    for (auto &bg : backgroundEvictor_) {
-      for (auto &tid : bg->getClassStats()) {
-        for (auto &pid : tid.second) {
-          for (auto &cid : pid.second) {
-            stats[tid.first][pid.first][cid.first] += cid.second;
+    if (direction == MoverDir::Evict) {
+        for (auto &bg : backgroundEvictor_) {
+          for (auto &tid : bg->getClassStats()) {
+            for (auto &pid : tid.second) {
+              for (auto &cid : pid.second) {
+                stats[tid.first][pid.first][cid.first] += cid.second;
+              }
+            }
           }
         }
-      }
+    } else if (direction == MoverDir::Promote) {
+        for (auto &bg : backgroundPromoter_) {
+          for (auto &tid : bg->getClassStats()) {
+            for (auto &pid : tid.second) {
+              for (auto &cid : pid.second) {
+                stats[tid.first][pid.first][cid.first] += cid.second;
+              }
+            }
+          }
+        }
     }
 
     return stats;
   }
   
-  std::map<TierId, std::map<PoolId, std::map<ClassId, uint64_t>>>
-  getBackgroundPromoterClassStats() const {
-    std::map<TierId, std::map<PoolId, std::map<ClassId, uint64_t>>> stats;
-
-    for (auto &bg : backgroundPromoter_) {
-      for (auto &tid : bg->getClassStats()) {
-        for (auto &pid : tid.second) {
-          for (auto &cid : pid.second) {
-            stats[tid.first][pid.first][cid.first] += cid.second;
-          }
-        }
-      }
-    }
-
-    return stats;
-  }
 
   // return the LruType of an item
   typename MMType::LruType getItemLruType(const Item& item) const;
@@ -2258,8 +2254,8 @@ class CacheAllocator : public CacheBase {
   std::unique_ptr<MemoryMonitor> memMonitor_;
   
   // background evictor
-  std::vector<std::unique_ptr<BackgroundEvictor<CacheT>>> backgroundEvictor_;
-  std::vector<std::unique_ptr<BackgroundPromoter<CacheT>>> backgroundPromoter_;
+  std::vector<std::unique_ptr<BackgroundMover<CacheT>>> backgroundEvictor_;
+  std::vector<std::unique_ptr<BackgroundMover<CacheT>>> backgroundPromoter_;
 
   // check whether a pool is a slabs pool
   std::array<bool, MemoryPoolManager::kMaxPools> isCompactCachePool_{};
@@ -2315,8 +2311,7 @@ class CacheAllocator : public CacheBase {
   // Make this friend to give access to acquire and release
   friend ReadHandle;
   friend ReaperAPIWrapper<CacheT>;
-  friend BackgroundEvictorAPIWrapper<CacheT>;
-  friend BackgroundPromoterAPIWrapper<CacheT>;
+  friend BackgroundMoverAPIWrapper<CacheT>;
   friend class CacheAPIWrapperForNvm<CacheT>;
   friend class FbInternalRuntimeUpdateWrapper<CacheT>;
 

@@ -162,7 +162,7 @@ std::shared_ptr<RebalanceStrategy> CacheConfig::getRebalanceStrategy() const {
   }
 }
 
-std::shared_ptr<BackgroundEvictorStrategy> CacheConfig::getBackgroundEvictorStrategy() const {
+std::shared_ptr<BackgroundMoverStrategy> CacheConfig::getBackgroundEvictorStrategy() const {
   if (backgroundEvictorIntervalMilSec == 0) {
     return nullptr;
   }
@@ -170,7 +170,7 @@ std::shared_ptr<BackgroundEvictorStrategy> CacheConfig::getBackgroundEvictorStra
   return std::make_shared<FreeThresholdStrategy>(lowEvictionAcWatermark, highEvictionAcWatermark, maxEvictionBatch, minEvictionBatch);
 }
 
-std::shared_ptr<BackgroundEvictorStrategy> CacheConfig::getBackgroundPromoterStrategy() const {
+std::shared_ptr<BackgroundMoverStrategy> CacheConfig::getBackgroundPromoterStrategy() const {
   if (backgroundPromoterIntervalMilSec == 0) {
     return nullptr;
   }
