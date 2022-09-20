@@ -1227,7 +1227,7 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
     Item* candidate = nullptr;
 
     mmContainer.withEvictionIterator(
-        [this, pid, cid, &candidate, &toRecycle, &searchTries](auto&& itr) {
+        [this, pid, cid, &candidate, &toRecycle, &searchTries, &mmContainer](auto&& itr) {
           if (!itr) {
             ++searchTries;
             (*stats_.evictionAttempts)[pid][cid].inc();
@@ -1247,7 +1247,11 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
                     : toRecycle_;
 
             // make sure no other thead is evicting the item
-            if (candidate_->getRefCount() == 0 && candidate_->markExclusive()) {
+            if (candidate_->getRefCount() == 0 && evictNormalItem2(*candidate_)) {
+              if (!toRecycle_->isChainedItem()) {
+                 mmContainer.remove(itr);
+              }
+
               toRecycle = toRecycle_;
               candidate = candidate_;
               return;
@@ -1260,17 +1264,12 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
     if (!toRecycle)
       continue;
 
+    if (toRecycle->isChainedItem())
+      removeFromMMContainer(*candidate);
+
     XDCHECK(toRecycle);
     XDCHECK(candidate);
 
-    // for chained items, the ownership of the parent can change. We try to
-    // evict what we think as parent and see if the eviction of parent
-    // recycles the child we intend to.
-    {
-      auto toReleaseHandle = evictNormalItem(*candidate);
-      // destroy toReleseHandle. The item won't be release to allocator
-      // since we marked it as exclusive.
-    }
     const auto ref = candidate->unmarkExclusive();
 
     if (ref == 0u) {
@@ -2632,6 +2631,47 @@ void CacheAllocator<CacheTrait>::evictForSlabRelease(
 
 template <typename CacheTrait>
 typename CacheAllocator<CacheTrait>::WriteHandle
+CacheAllocator<CacheTrait>::evictNormalItem2(Item& item) {
+  if (item.isOnlyExclusive()) {
+    return WriteHandle{};
+  }
+
+  auto predicate = [](Item& it) { 
+    if (it.getRefCount() == 0) {
+      return it.markExclusive();
+    } else {
+      return false;
+    }
+  };
+
+  const bool evictToNvmCache = shouldWriteToNvmCache(item);
+  auto token = evictToNvmCache ? nvmCache_->createPutToken(item.getKey())
+                               : typename NvmCacheT::PutToken{};
+
+  // We remove the item from both access and mm containers. It doesn't matter
+  // if someone else calls remove on the item at this moment, the item cannot
+  // be freed as long as we have the exclusive bit set.
+  auto handle = accessContainer_->removeIf(item, std::move(predicate));
+
+  if (!handle) {
+    return handle;
+  }
+
+  XDCHECK_EQ(reinterpret_cast<uintptr_t>(handle.get()),
+             reinterpret_cast<uintptr_t>(&item));
+  XDCHECK_EQ(1u, handle->getRefCount());
+
+  // now that we are the only handle and we actually removed something from
+  // the RAM cache, we enqueue it to nvmcache.
+  if (evictToNvmCache && shouldWriteToNvmCacheExclusive(item)) {
+    nvmCache_->put(handle, std::move(token));
+  }
+
+  return handle;
+}
+
+template <typename CacheTrait>
+typename CacheAllocator<CacheTrait>::WriteHandle
 CacheAllocator<CacheTrait>::evictNormalItem(Item& item) {
   XDCHECK(item.isExclusive());
 
@@ -2639,7 +2679,7 @@ CacheAllocator<CacheTrait>::evictNormalItem(Item& item) {
     return WriteHandle{};
   }
 
-  auto predicate = [](const Item& it) { return it.getRefCount() == 0; };
+  auto predicate = [](Item& it) { return it.getRefCount() == 0; };
 
   const bool evictToNvmCache = shouldWriteToNvmCache(item);
   auto token = evictToNvmCache ? nvmCache_->createPutToken(item.getKey())

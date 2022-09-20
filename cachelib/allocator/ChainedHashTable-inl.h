@@ -430,8 +430,9 @@ bool ChainedHashTable::Container<T, HookPtr, LockT>::remove(T& node) noexcept {
 template <typename T,
           typename ChainedHashTable::Hook<T> T::*HookPtr,
           typename LockT>
+template <typename P>
 typename T::Handle ChainedHashTable::Container<T, HookPtr, LockT>::removeIf(
-    T& node, const std::function<bool(const T& node)>& predicate) {
+    T& node, P&& predicate) {
   const auto bucket = ht_.getBucket(node.getKey());
   auto l = locks_.lockExclusive(bucket);
 

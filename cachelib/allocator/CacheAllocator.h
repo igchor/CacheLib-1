@@ -1744,6 +1744,7 @@ class CacheAllocator : public CacheBase {
   // @return last handle for corresponding to item on success. empty handle on
   // failure. caller can retry if needed.
   WriteHandle evictNormalItem(Item& item);
+  WriteHandle evictNormalItem2(Item& item);
 
   // Helper function to evict a child item for slab release
   // As a side effect, the parent item is also evicted

@@ -480,8 +480,9 @@ class ChainedHashTable {
     // @return handle to the node if we successfully removed it. returns a
     // null handle if the node was either not in the container or the
     // predicate failed.
+    template <typename P>
     Handle removeIf(T& node,
-                    const std::function<bool(const T& node)>& predicate);
+                    P&& predicate);
 
     // finds the node corresponding to the key in the hashtable and returns a
     // handle to that node.
