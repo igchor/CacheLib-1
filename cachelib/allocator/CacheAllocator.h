@@ -1406,6 +1406,12 @@ class CacheAllocator : public CacheBase {
                                    uint32_t creationTime,
                                    uint32_t expiryTime);
 
+  WriteHandle allocateInternalTier(TierId tid,
+                                   PoolId id,
+                                   ClassId cid,
+                                   uint32_t creationTime,
+                                   uint32_t expiryTime);
+
   // Allocate a chained item
   //
   // The resulting chained item does not have a parent item and
@@ -1498,8 +1504,8 @@ class CacheAllocator : public CacheBase {
   //
   // @return true  If the move was completed, and the containers were updated
   //               successfully.
-  template <typename P>
-  WriteHandle moveRegularItemWithSync(Item& oldItem, WriteHandle& newItemHdl, P&& predicate);
+  template <typename ItemPtr, typename P>
+  std::pair<WriteHandle, std::function<void(void)>> moveRegularItemWithSync(ItemPtr& oldItem, WriteHandle& newItemHdl, P&& predicate);
 
   // Moves a regular item to a different slab. This should only be used during
   // slab release after the item's moving bit has been set. The user supplied
@@ -1660,6 +1666,25 @@ class CacheAllocator : public CacheBase {
   // @return An evicted item or nullptr  if there is no suitable candidate.
   Item* findEviction(TierId tid, PoolId pid, ClassId cid);
 
+    // Advance the current iterator and try to evict a regular item
+  //
+  // @param  mmContainer  the container to look for evictions.
+  // @param  itr          iterator holding the item
+  //
+  // @return  valid handle to regular item on success. This will be the last
+  //          handle to the item. On failure an empty handle.
+  WriteHandle advanceIteratorAndTryEvictRegularItem(MMContainer& mmContainer,
+                                                    EvictionIterator& itr);
+
+  // Advance the current iterator and try to evict a chained item
+  // Iterator may also be reset during the course of this function
+  //
+  // @param  itr          iterator holding the item
+  //
+  // @return  valid handle to the parent item on success. This will be the last
+  //          handle to the item
+  WriteHandle advanceIteratorAndTryEvictChainedItem(EvictionIterator& itr);
+
   // Try to move the item down to the next memory tier
   //
   // @param tid current tier ID of the item
@@ -1668,15 +1693,8 @@ class CacheAllocator : public CacheBase {
   //
   // @return valid handle to the item. This will be the last
   //         handle to the item. On failure an empty handle.
-  WriteHandle tryEvictToNextMemoryTier(TierId tid, PoolId pid, Item& item);
-
-  // Try to move the item down to the next memory tier
-  //
-  // @param item the item to evict
-  //
-  // @return valid handle to the item. This will be the last
-  //         handle to the item. On failure an empty handle. 
-  WriteHandle tryEvictToNextMemoryTier(Item& item);
+  template <typename ItemPtr>
+  std::pair<WriteHandle, std::function<void(void)>> tryEvictToNextMemoryTier(ItemPtr& item, WriteHandle& newItemHdl);
 
   size_t memoryTierSize(TierId tid) const;
 
@@ -1942,6 +1960,10 @@ class CacheAllocator : public CacheBase {
 
   static bool itemMovingPredicate(const Item& item) {
     return item.getRefCount() == 0;
+  }
+
+   static bool itemEvictionPredicate(const Item& item) {
+    return item.getRefCount() == 0 && !item.isMoving();
   }
 
   static bool itemExpiryPredicate(const Item& item) {

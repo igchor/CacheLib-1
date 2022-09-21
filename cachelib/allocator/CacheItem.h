@@ -281,6 +281,7 @@ class CACHELIB_PACKED_ATTR CacheItem {
  protected:
   // construct an item without expiry timestamp.
   CacheItem(Key key, uint32_t size, uint32_t creationTime);
+  CacheItem(uint32_t totalSize, uint32_t creationTime, uint32_t expiryTime);
 
   // @param key           Key for this item
   // @param size          Size allocated by the user. This may be smaller than
@@ -297,6 +298,7 @@ class CACHELIB_PACKED_ATTR CacheItem {
   // @throw std::invalid_argument if item is not a chained item or the key
   //        size does not match with the current key
   void changeKey(Key key);
+  void setKeyAndSize(Key newKey, uint32_t size);
 
   void* getMemoryInternal() const noexcept;
 

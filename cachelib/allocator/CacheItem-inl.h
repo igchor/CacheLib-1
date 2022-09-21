@@ -45,6 +45,12 @@ CacheItem<CacheTrait>::CacheItem(Key key,
     : creationTime_(creationTime), expiryTime_(expiryTime), alloc_(key, size) {}
 
 template <typename CacheTrait>
+CacheItem<CacheTrait>::CacheItem(uint32_t size,
+                                 uint32_t creationTime,
+                                 uint32_t expiryTime)
+    : creationTime_(creationTime), expiryTime_(expiryTime), alloc_(size) {}
+
+template <typename CacheTrait>
 CacheItem<CacheTrait>::CacheItem(Key key, uint32_t size, uint32_t creationTime)
     : CacheItem(key, size, creationTime, 0 /* expiryTime_ */) {}
 
@@ -160,6 +166,12 @@ void CacheItem<CacheTrait>::changeKey(Key key) {
 
   alloc_.changeKey(key);
   XDCHECK_EQ(key, getKey());
+}
+
+template <typename CacheTrait>
+void CacheItem<CacheTrait>::setKeyAndSize(Key newKey, uint32_t size) {
+  alloc_.setKeyAndSize(newKey, size);
+  XDCHECK_EQ(newKey, getKey());
 }
 
 template <typename CacheTrait>

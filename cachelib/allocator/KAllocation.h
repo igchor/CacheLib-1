@@ -89,12 +89,32 @@ class CACHELIB_PACKED_ATTR KAllocation {
     memcpy(&data_[0], key.start(), getKeySize());
   }
 
+  KAllocation(uint32_t totalSize)
+      : size_(totalSize) {
+    if (totalSize > kMaxValSize) {
+      throw std::invalid_argument(folly::sformat(
+          "value size exceeded maximum allowed. total size: {}", totalSize));
+    }
+  }
+
   KAllocation(const KAllocation&) = delete;
   KAllocation& operator=(const KAllocation&) = delete;
 
   // returns the key corresponding to the allocation.
   const Key getKey() const noexcept {
     return Key{reinterpret_cast<char*>(&data_[0]), getKeySize()};
+  }
+
+  void setKeyAndSize(Key key, uint32_t size) {
+    if (getKeySize() != 0) {
+      throw std::invalid_argument("Can only set key if not set already!");
+    }
+
+    throwIfKeyInvalid(key);
+
+    const_cast<uint32_t&>(size_) = size | (static_cast<uint32_t>(key.size()) << kMaxValSizeBits);
+
+    memcpy(&data_[0], key.start(), getKeySize());
   }
 
   // updates the current key with the new one. The key size must match.
