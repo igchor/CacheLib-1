@@ -83,8 +83,7 @@ class CacheBase {
   CacheBase(CacheBase&&) = default;
   CacheBase& operator=(CacheBase&&) = default;
 
-  // TODO: come up with some reasonable number
-  static constexpr unsigned kMaxTiers = 2;
+  static constexpr unsigned kMaxTiers = (1u << PtrCompressor::kNumTierIdxBits);
 
   // Get a string referring to the cache name for this cache
   virtual const std::string getCacheName() const = 0;

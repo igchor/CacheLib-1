@@ -1098,6 +1098,10 @@ template <typename T>
 const CacheAllocatorConfig<T>& CacheAllocatorConfig<T>::validateMemoryTiers()
     const {
   size_t parts = 0;
+  if (memoryTierConfigs.size() > CacheBase::kMaxTiers) {
+    throw std::invalid_argument("Only " + std::to_string(CacheBase::kMaxTiers) + " are allowed");
+  }
+
   for (const auto& tierConfig : memoryTierConfigs) {
     if (!tierConfig.getRatio()) {
       throw std::invalid_argument("Tier ratio must be an integer number >=1.");
@@ -1109,6 +1113,14 @@ const CacheAllocatorConfig<T>& CacheAllocatorConfig<T>::validateMemoryTiers()
     throw std::invalid_argument(
         "Sum of tier ratios must be less than total cache size.");
   }
+
+  auto maxTierSize =  PtrCompressor::getMaxAddressableSizePerTier(memoryTierConfigs.size());
+  for (const auto &tierConfig : memoryTierConfigs) {
+    if (tierConfig.calculateTierSize(size, parts) > maxTierSize) {
+      throw std::invalid_argument("Size of each tier must be less than " + std::to_string(maxTierSize));
+    }
+  }
+
   return *this;
 }
 
