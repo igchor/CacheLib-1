@@ -1273,7 +1273,7 @@ class CacheAllocator : public CacheBase {
   double slabsApproxFreePercentage(TierId tid) const;
 
   // wrapper around Item's refcount and active handle tracking
-  FOLLY_ALWAYS_INLINE void incRef(Item& it);
+  FOLLY_ALWAYS_INLINE bool incRef(Item& it);
   FOLLY_ALWAYS_INLINE RefcountWithFlags::Value decRef(Item& it);
 
   // drops the refcount and if needed, frees the allocation back to the memory
@@ -1499,7 +1499,7 @@ class CacheAllocator : public CacheBase {
   // @return true  If the move was completed, and the containers were updated
   //               successfully.
   template <typename P>
-  WriteHandle moveRegularItemWithSync(Item& oldItem, WriteHandle& newItemHdl, P&& predicate);
+  bool moveRegularItemWithSync(Item& oldItem, WriteHandle& newItemHdl, P&& predicate);
 
   // Moves a regular item to a different slab. This should only be used during
   // slab release after the item's moving bit has been set. The user supplied
@@ -1668,7 +1668,7 @@ class CacheAllocator : public CacheBase {
   //
   // @return valid handle to the item. This will be the last
   //         handle to the item. On failure an empty handle.
-  WriteHandle tryEvictToNextMemoryTier(TierId tid, PoolId pid, Item& item);
+  bool tryEvictToNextMemoryTier(TierId tid, PoolId pid, Item& item);
 
   // Try to move the item down to the next memory tier
   //
@@ -1676,7 +1676,7 @@ class CacheAllocator : public CacheBase {
   //
   // @return valid handle to the item. This will be the last
   //         handle to the item. On failure an empty handle. 
-  WriteHandle tryEvictToNextMemoryTier(Item& item);
+  bool tryEvictToNextMemoryTier(Item& item);
 
   size_t memoryTierSize(TierId tid) const;
 
@@ -1797,7 +1797,7 @@ class CacheAllocator : public CacheBase {
   //
   // @return last handle for corresponding to item on success. empty handle on
   // failure. caller can retry if needed.
-  WriteHandle evictNormalItem(Item& item, bool skipIfTokenInvalid = false);
+  bool evictNormalItem(Item& item);
 
   // Helper function to evict a child item for slab release
   // As a side effect, the parent item is also evicted
@@ -2001,8 +2001,10 @@ class CacheAllocator : public CacheBase {
     return memoryTierConfigs.size();
   }
 
-  bool addWaitContextForMovingItem(
+  void addWaitContextForMovingItem(
       folly::StringPiece key, std::shared_ptr<WaitContext<ReadHandle>> waiter);
+
+  size_t wakeUpWaiters(folly::StringPiece key, WriteHandle&& handle);
 
   class MoveCtx {
    public:
@@ -2019,6 +2021,8 @@ class CacheAllocator : public CacheBase {
     // and pass a clone of the handle to the callBack. By default we pass
     // a null handle
     void setItemHandle(WriteHandle _it) { it = std::move(_it); }
+
+    size_t numWaiters() const { return waiters.size(); }
 
     // enqueue a waiter into the waiter list
     // @param  waiter       WaitContext

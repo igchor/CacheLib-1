@@ -311,12 +311,13 @@ class CACHELIB_PACKED_ATTR CacheItem {
    */
   RefcountWithFlags::Value getRefCountAndFlagsRaw() const noexcept;
 
-  FOLLY_ALWAYS_INLINE void incRef() {
-    if (LIKELY(ref_.incRef())) {
-      return;
+  FOLLY_ALWAYS_INLINE bool incRef() {
+    try {
+      return ref_.incRef();
+    } catch(exception::RefcountOverflow& e) {
+      throw exception::RefcountOverflow(
+        folly::sformat("{} item: {}", e.what(), toString()));
     }
-    throw exception::RefcountOverflow(
-        folly::sformat("Refcount maxed out. item: {}", toString()));
   }
 
   FOLLY_ALWAYS_INLINE RefcountWithFlags::Value decRef() {
@@ -365,7 +366,7 @@ class CACHELIB_PACKED_ATTR CacheItem {
    *
    * Unmarking moving does not depend on `isInMMContainer`
    */
-  bool markMoving() noexcept;
+  bool markMoving(bool onlyIfRefCountZero) noexcept;
   RefcountWithFlags::Value unmarkMoving() noexcept;
   bool isMoving() const noexcept;
   bool isOnlyMoving() const noexcept;

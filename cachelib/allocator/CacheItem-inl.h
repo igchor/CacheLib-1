@@ -214,8 +214,8 @@ bool CacheItem<CacheTrait>::isInMMContainer() const noexcept {
 }
 
 template <typename CacheTrait>
-bool CacheItem<CacheTrait>::markMoving() noexcept {
-  return ref_.markMoving();
+bool CacheItem<CacheTrait>::markMoving(bool onlyIfRefCountZero) noexcept {
+  return ref_.markMoving(onlyIfRefCountZero);
 }
 
 template <typename CacheTrait>

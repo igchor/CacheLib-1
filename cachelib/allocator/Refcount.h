@@ -137,15 +137,20 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
   // Bumps up the reference count only if the new count will be strictly less
   // than or equal to the maxCount.
   // @return true if refcount is bumped. false otherwise.
-  FOLLY_ALWAYS_INLINE bool incRef() noexcept {
+  FOLLY_ALWAYS_INLINE bool incRef() {
     Value* const refPtr = &refCount_;
     unsigned int nCASFailures = 0;
     constexpr bool isWeak = false;
+    Value bitMask = getAdminRef<kMoving>();
     Value oldVal = __atomic_load_n(refPtr, __ATOMIC_RELAXED);
 
     while (true) {
       const Value newCount = oldVal + static_cast<Value>(1);
+      const bool isMoving = oldVal & bitMask;
       if (UNLIKELY((oldVal & kAccessRefMask) == (kAccessRefMask))) {
+        throw exception::RefcountOverflow("Refcount maxed out");
+      }
+      if (isMoving) {
         return false;
       }
 
@@ -261,7 +266,7 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
    *
    * Unmarking moving does not depend on `isInMMContainer`
    */
-  bool markMoving() noexcept {
+  bool markMoving(bool onlyIfRefCountZero) noexcept {
     Value bitMask = getAdminRef<kMoving>();
     Value conditionBitMask = getAdminRef<kLinked>();
 
@@ -273,6 +278,9 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
       const bool flagSet = curValue & conditionBitMask;
       const bool alreadyMoving = curValue & bitMask;
       if (!flagSet || alreadyMoving) {
+        return false;
+      }
+      if (onlyIfRefCountZero && (curValue & kAccessRefMask) != 0) {
         return false;
       }
 
