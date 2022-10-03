@@ -1252,11 +1252,20 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
               // evict what we think as parent and see if the eviction of parent
               // recycles the child we intend to.
               ctx = removeExclusiveItemFromAC(*candidate);
-              if (ctx) {
-                if (toRecycle->isChainedItem()) {
-                  // chained items are handled outside of this critical section since
-                  // parent might be in different mmContainer than child
-                  mmContainer.remove(itr);
+              if (ctx && !toRecycle->isChainedItem()) {
+                // chained items are handled outside of this critical section since
+                // parent might be in different mmContainer than the child
+                mmContainer.remove(itr);
+              }
+
+              if (candidate->unmarkExclusive() == 0u || (ctx && candidate->getRefCount() == 1u)) {
+                // recycle the item. it's safe to do so, even if ctx is NULL.
+                // If `ref` == 0 then it means that we are the last holder of
+                // that item.
+                if (candidate->hasChainedItem()) {
+                  (*stats_.chainedItemEvictions)[pid][cid].inc();
+                } else {
+                  (*stats_.regularItemEvictions)[pid][cid].inc();
                 }
                 return;
               } else {
@@ -1272,33 +1281,28 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
           }
         });
 
-    if (!ctx)
+    if (!candidate)
       continue;
 
     XDCHECK(toRecycle);
-    XDCHECK(candidate);
 
-    // we have the last handle. no longer need to hold on to the exclusive bit
-    candidate->unmarkExclusive();
     removeFromMMContainer(*candidate);
+
+    XDCHECK(!candidate->isExclusive());
 
     // now that we are the only handle and we actually removed something from
     // the RAM cache, we enqueue it to nvmcache.
-    if (shouldWriteToNvmCache(*candidate) && shouldWriteToNvmCacheExclusive(*candidate)) {
+    if (ctx && shouldWriteToNvmCache(*candidate) && shouldWriteToNvmCacheExclusive(*candidate)) {
       nvmCache_->put(ctx.handle, std::move(ctx.putToken));
     }
 
-    // manually decrement the refcount to call releaseBackToAllocator
-    const auto ref = decRef(*ctx.handle);
-    XDCHECK(ref == 0);
-    
-    // recycle the item. it's safe to do so, even if toReleaseHandle was
-    // NULL. If `ref` == 0 then it means that we are the last holder of
-    // that item.
-    if (candidate->hasChainedItem()) {
-      (*stats_.chainedItemEvictions)[pid][cid].inc();
+    if (ctx) {
+      // manually decrement the refcount to call releaseBackToAllocator
+      ctx.handle.release();
+      const auto ref = decRef(*candidate);
+      XDCHECK_EQ(ref, 0);
     } else {
-      (*stats_.regularItemEvictions)[pid][cid].inc();
+      XDCHECK_EQ(candidate->getRefCountAndFlagsRaw(), 0u);
     }
 
     if (auto eventTracker = getEventTracker()) {
