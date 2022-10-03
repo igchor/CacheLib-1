@@ -1774,11 +1774,31 @@ class CacheAllocator : public CacheBase {
                            Item& item,
                            util::Throttler& throttler);
 
+  struct EvictionContext {
+    EvictionContext() : putToken(typename NvmCacheT::PutToken{}) {
+    }
+
+    EvictionContext(WriteHandle&& handle, typename NvmCacheT::PutToken&& putToken): handle(std::move(handle)), putToken(std::move(putToken)) {
+    }
+
+    operator bool() const {
+      return handle != nullptr;
+    }
+
+    WriteHandle handle;
+    typename NvmCacheT::PutToken putToken;
+  };
+
+  // Removes item from Access Container if there are no active handles.
+  // @param  item item to be removed
+  // @return context containing handle and putToken for NvmCache if applicable
+  EvictionContext removeExclusiveItemFromAC(Item& item);
+
   // Helper function to evict a normal item for slab release
   //
   // @return last handle for corresponding to item on success. empty handle on
   // failure. caller can retry if needed.
-  WriteHandle evictNormalItem(Item& item);
+  WriteHandle evictNormalItemForSlabRelease(Item& item);
 
   // Helper function to evict a child item for slab release
   // As a side effect, the parent item is also evicted
