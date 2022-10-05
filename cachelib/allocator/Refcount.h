@@ -116,6 +116,10 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
     // unevictable in the past.
     kUnevictable_NOOP,
 
+    // Item is accecible but content is not ready yet. Used by eviction
+    // when Item is moved between memory tiers.
+    kIncomplete,
+
     // Unused. This is just to indciate the maximum number of flags
     kFlagMax,
   };
@@ -134,15 +138,21 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
   // Bumps up the reference count only if the new count will be strictly less
   // than or equal to the maxCount.
   // @return true if refcount is bumped. false otherwise.
-  FOLLY_ALWAYS_INLINE bool incRef() noexcept {
+  FOLLY_ALWAYS_INLINE bool incRef(bool incIfExclusive = true) noexcept {
     Value* const refPtr = &refCount_;
     unsigned int nCASFailures = 0;
     constexpr bool isWeak = false;
+    
+    Value bitMask = getAdminRef<kExclusive>();
     Value oldVal = __atomic_load_n(refPtr, __ATOMIC_RELAXED);
 
     while (true) {
+      const bool alreadyExclusive = oldVal & bitMask;
       const Value newCount = oldVal + static_cast<Value>(1);
       if (UNLIKELY((oldVal & kAccessRefMask) == (kAccessRefMask))) {
+        return false;
+      }
+      if (alreadyExclusive && !incIfExclusive) {
         return false;
       }
 
@@ -258,7 +268,7 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
    *
    * Unmarking exclusive does not depend on `isInMMContainer`
    */
-  bool markExclusive() noexcept {
+  bool markExclusive(bool onlyIfRefCountZero) noexcept {
     Value bitMask = getAdminRef<kExclusive>();
     Value conditionBitMask = getAdminRef<kLinked>();
 
@@ -270,6 +280,9 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
       const bool flagSet = curValue & conditionBitMask;
       const bool alreadyExclusive = curValue & bitMask;
       if (!flagSet || alreadyExclusive) {
+        return false;
+      }
+      if (onlyIfRefCountZero && (curValue & kAccessRefMask) != 0) {
         return false;
       }
 
@@ -332,6 +345,14 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
   void markNvmEvicted() noexcept { return setFlag<kNvmEvicted>(); }
   void unmarkNvmEvicted() noexcept { return unSetFlag<kNvmEvicted>(); }
   bool isNvmEvicted() const noexcept { return isFlagSet<kNvmEvicted>(); }
+
+  /**
+   * Marks that the item is migrating between memory tiers and
+   * not ready for access now. Accessing thread should wait.
+   */
+  void markIncomplete() noexcept { return setFlag<kIncomplete>(); }
+  void unmarkIncomplete() noexcept { return unSetFlag<kIncomplete>(); }
+  bool isIncomplete() const noexcept { return isFlagSet<kIncomplete>(); }
 
   // Whether or not an item is completely drained of access
   // Refcount is 0 and the item is not linked, accessible, nor exclusive

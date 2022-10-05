@@ -481,7 +481,8 @@ struct ReadHandleImpl {
 
   // Handle which has the item already
   FOLLY_ALWAYS_INLINE ReadHandleImpl(Item* it, CacheT& alloc) noexcept
-      : alloc_(&alloc), it_(it) {}
+      : alloc_(&alloc), it_(it) {
+  }
 
   // handle that has a wait context allocated. Used for async handles
   // In this case, the it_ will be filled in asynchronously and mulitple

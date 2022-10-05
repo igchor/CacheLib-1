@@ -81,6 +81,8 @@ CacheAllocator<CacheTrait>::CacheAllocator(
                               config.chainedItemAccessConfig)),
       chainedItemLocks_(config_.chainedItemsLockPower,
                         std::make_shared<MurmurHash2>()),
+      movesMap_(kShards),
+      moveLock_(kShards),  
       cacheCreationTime_{
           type != InitMemType::kMemAttach
               ? util::getCurrentTimeSec()
@@ -862,9 +864,13 @@ CacheAllocator<CacheTrait>::releaseBackToAllocator(Item& it,
 }
 
 template <typename CacheTrait>
-void CacheAllocator<CacheTrait>::incRef(Item& it) {
-  it.incRef();
-  ++handleCount_.tlStats();
+bool CacheAllocator<CacheTrait>::incRef(Item& it, bool incIfExclusive) {
+  if (it.incRef(incIfExclusive)) {
+    ++handleCount_.tlStats();
+    return true;
+  }
+
+  return false;
 }
 
 template <typename CacheTrait>
@@ -884,7 +890,24 @@ CacheAllocator<CacheTrait>::acquire(Item* it) {
 
   SCOPE_FAIL { stats_.numRefcountOverflow.inc(); };
 
-  incRef(*it);
+  auto incremented = incRef(*it, false);
+
+  if (!incremented) {
+    auto hdl = WriteHandle{*this};
+    auto waitContext = hdl.getItemWaitContext();
+    XDCHECK(waitContext);
+
+    auto shard = getShardForKey(it->getKey());
+    auto& movesMap = getMoveMapForShard(shard);
+    {
+      auto lock = getMoveLockForShard(shard);
+      auto ret = movesMap.try_emplace(it->getKey(), std::make_unique<MoveCtx>());
+      ret.first->second->addWaiter(std::move(waitContext));
+    }
+
+    return hdl;
+  }
+
   return WriteHandle{it, *this};
 }
 
@@ -925,6 +948,25 @@ bool CacheAllocator<CacheTrait>::replaceInMMContainer(Item& oldItem,
   } else {
     return oldContainer.remove(oldItem) && newContainer.add(newItem);
   }
+}
+
+template <typename CacheTrait>
+bool CacheAllocator<CacheTrait>::replaceInMMContainer(Item* oldItem,
+                                                      Item& newItem) {
+  return replaceInMMContainer(*oldItem, newItem);
+}
+
+template <typename CacheTrait>
+bool CacheAllocator<CacheTrait>::replaceInMMContainer(EvictionIterator& oldItemIt,
+                                                      Item& newItem) {
+  auto& oldContainer = getMMContainer(*oldItemIt);
+  auto& newContainer = getMMContainer(newItem);
+
+  // This function is used for eviction across tiers
+  XDCHECK(&oldContainer != &newContainer);
+  oldContainer.remove(oldItemIt);
+
+  return newContainer.add(newItem);
 }
 
 template <typename CacheTrait>
@@ -1225,9 +1267,9 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
           config_.evictionSearchTries > searchTries)) {
     Item* toRecycle = nullptr;
     Item* candidate = nullptr;
-
+  
     mmContainer.withEvictionIterator(
-        [this, pid, cid, &candidate, &toRecycle, &searchTries](auto&& itr) {
+        [this, pid, cid, &candidate, &toRecycle, &searchTries, &mmContainer](auto&& itr) {
           if (!itr) {
             ++searchTries;
             (*stats_.evictionAttempts)[pid][cid].inc();
@@ -1247,9 +1289,15 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
                     : toRecycle_;
 
             // make sure no other thead is evicting the item
-            if (candidate_->getRefCount() == 0 && candidate_->markExclusive()) {
+            auto markedExclusive = candidate_->markExclusive(false);
+            if (markedExclusive) {
               toRecycle = toRecycle_;
               candidate = candidate_;
+
+              if (!toRecycle_->isChainedItem()) {
+                mmContainer.remove(itr);
+              }
+
               return;
             }
 
@@ -1263,15 +1311,30 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
     XDCHECK(toRecycle);
     XDCHECK(candidate);
 
-    // for chained items, the ownership of the parent can change. We try to
-    // evict what we think as parent and see if the eviction of parent
-    // recycles the child we intend to.
-    {
-      auto toReleaseHandle = evictNormalItem(*candidate);
-      // destroy toReleseHandle. The item won't be release to allocator
-      // since we marked it as exclusive.
-    }
+    evictNormalItem(*candidate);
     const auto ref = candidate->unmarkExclusive();
+    XDCHECK(ref == 0);
+
+    std::unique_ptr<MoveCtx> ctx;
+    auto shard = getShardForKey(candidate->getKey());
+    auto& movesMap = getMoveMapForShard(shard);
+    {
+      auto lock = getMoveLockForShard(shard);
+      movesMap.eraseInto(candidate->getKey(), [&](auto &&key, auto &&value) {
+        ctx = std::move(value);
+      });
+    }
+
+    if (ref == 0u) {
+
+    if (ctx)
+        ctx->setItemHandle(WriteHandle{});
+    } else {
+      if (ctx)
+        ctx->setItemHandle(acquire(candidate));
+    }
+
+    // now, all waiters are awaken.
 
     if (ref == 0u) {
       // recycle the item. it's safe to do so, even if toReleaseHandle was
@@ -2593,7 +2656,11 @@ void CacheAllocator<CacheTrait>::evictForSlabRelease(
     auto owningHandle =
         item.isChainedItem()
             ? evictChainedItemForSlabRelease(item.asChainedItem())
-            : evictNormalItem(item);
+            : WriteHandle{};
+
+    if (!item.isChainedItem()) {
+      evictNormalItem(item);
+    }
 
     // we managed to evict the corresponding owner of the item and have the
     // last handle for the owner.
@@ -2647,15 +2714,10 @@ void CacheAllocator<CacheTrait>::evictForSlabRelease(
 }
 
 template <typename CacheTrait>
-typename CacheAllocator<CacheTrait>::WriteHandle
+void
 CacheAllocator<CacheTrait>::evictNormalItem(Item& item) {
   XDCHECK(item.isExclusive());
-
-  if (item.isOnlyExclusive()) {
-    return WriteHandle{};
-  }
-
-  auto predicate = [](const Item& it) { return it.getRefCount() == 0; };
+  XDCHECK(!item.isOnlyExclusive());
 
   const bool evictToNvmCache = shouldWriteToNvmCache(item);
   auto token = evictToNvmCache ? nvmCache_->createPutToken(item.getKey())
@@ -2664,24 +2726,16 @@ CacheAllocator<CacheTrait>::evictNormalItem(Item& item) {
   // We remove the item from both access and mm containers. It doesn't matter
   // if someone else calls remove on the item at this moment, the item cannot
   // be freed as long as we have the exclusive bit set.
-  auto handle = accessContainer_->removeIf(item, std::move(predicate));
-
-  if (!handle) {
-    return handle;
-  }
-
-  XDCHECK_EQ(reinterpret_cast<uintptr_t>(handle.get()),
-             reinterpret_cast<uintptr_t>(&item));
-  XDCHECK_EQ(1u, handle->getRefCount());
+  accessContainer_->remove(item);
+  XDCHECK_EQ(0u, item.getRefCount());
   removeFromMMContainer(item);
 
   // now that we are the only handle and we actually removed something from
   // the RAM cache, we enqueue it to nvmcache.
   if (evictToNvmCache && shouldWriteToNvmCacheExclusive(item)) {
-    nvmCache_->put(handle, std::move(token));
+    // XXX - can we just acquire a handle here?
+   // nvmCache_->put(handle, std::move(token));
   }
-
-  return handle;
 }
 
 template <typename CacheTrait>
@@ -2819,13 +2873,13 @@ bool CacheAllocator<CacheTrait>::markExclusiveForSlabRelease(
   // At first, we assume this item was already freed
   bool itemFreed = true;
   bool markedMoving = false;
-  const auto fn = [&markedMoving, &itemFreed](void* memory) {
+  const auto fn = [this, &markedMoving, &itemFreed](void* memory) {
     // Since this callback is executed, the item is not yet freed
     itemFreed = false;
     Item* item = static_cast<Item*>(memory);
-    if (item->markExclusive()) {
-      markedMoving = true;
-    }
+    // if (markItemAsExclusive(*item, false)) { // XXX - store guards in vector and then unlock with handle depending on what happend (mvoe vs evict)
+    //   markedMoving = true;
+    // }
   };
 
   auto startTime = util::getCurrentTimeSec();

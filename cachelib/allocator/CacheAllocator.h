@@ -22,7 +22,10 @@
 #include <folly/ScopeGuard.h>
 #include <folly/logging/xlog.h>
 #include <folly/synchronization/SanitizeThread.h>
+#include <folly/hash/Hash.h>
+#include <folly/container/F14Map.h>
 #include <gtest/gtest.h>
+#include <folly/concurrency/ConcurrentHashMap.h>
 
 #include <chrono>
 #include <functional>
@@ -1302,7 +1305,7 @@ class CacheAllocator : public CacheBase {
 
  private:
   // wrapper around Item's refcount and active handle tracking
-  FOLLY_ALWAYS_INLINE void incRef(Item& it);
+  FOLLY_ALWAYS_INLINE bool incRef(Item& it, bool incIfExclusive = true);
   FOLLY_ALWAYS_INLINE RefcountWithFlags::Value decRef(Item& it);
 
   // drops the refcount and if needed, frees the allocation back to the memory
@@ -1591,6 +1594,10 @@ class CacheAllocator : public CacheBase {
   //         false  if the item is not in MMContainer
   bool removeFromMMContainer(Item& item);
 
+  using EvictionIterator = typename MMContainer::Iterator;
+
+  WriteHandle acquire(EvictionIterator& it) { return acquire(it.get()); }
+
   // Replaces an item in the MMContainer with another item, at the same
   // position.
   //
@@ -1601,6 +1608,8 @@ class CacheAllocator : public CacheBase {
   //               destination item did not exist in the container, or if the
   //               source item already existed.
   bool replaceInMMContainer(Item& oldItem, Item& newItem);
+  bool replaceInMMContainer(Item* oldItem, Item& newItem);
+  bool replaceInMMContainer(EvictionIterator& oldItemIt, Item& newItem);
 
   // Replaces an item in the MMContainer with another item, at the same
   // position. Or, if the two chained items belong to two different MM
@@ -1658,8 +1667,6 @@ class CacheAllocator : public CacheBase {
   // @param  cid  the id of the class to look for evictions inside
   // @return An evicted item or nullptr  if there is no suitable candidate.
   Item* findEviction(PoolId pid, ClassId cid);
-
-  using EvictionIterator = typename MMContainer::Iterator;
 
   // Deserializer CacheAllocatorMetadata and verify the version
   //
@@ -1778,7 +1785,7 @@ class CacheAllocator : public CacheBase {
   //
   // @return last handle for corresponding to item on success. empty handle on
   // failure. caller can retry if needed.
-  WriteHandle evictNormalItem(Item& item);
+  void evictNormalItem(Item& item);
 
   // Helper function to evict a child item for slab release
   // As a side effect, the parent item is also evicted
@@ -1957,6 +1964,31 @@ class CacheAllocator : public CacheBase {
 
   // BEGIN private members
 
+  using MoveMap =
+      folly::F14ValueMap<folly::StringPiece,
+                         std::unique_ptr<MoveCtx>,
+                         folly::HeterogeneousAccessHash<folly::StringPiece>>;
+
+  static size_t getShardForKey(folly::StringPiece key) {
+    return folly::Hash()(key) % kShards;
+  }
+
+  MoveMap& getMoveMapForShard(size_t shard) {
+    return movesMap_[shard].movesMap_;
+  }
+
+  MoveMap& getMoveMap(folly::StringPiece key) {
+    return getMoveMapForShard(getShardForKey(key));
+  }
+
+  std::unique_lock<std::mutex> getMoveLockForShard(size_t shard) {
+    return std::unique_lock<std::mutex>(moveLock_[shard].moveLock_);
+  }
+
+  std::unique_lock<std::mutex> getMoveLock(folly::StringPiece key) {
+    return getMoveLockForShard(getShardForKey(key));
+  }
+
   // Whether the memory allocator for this cache allocator was created on shared
   // memory. The hash table, chained item hash table etc is also created on
   // shared memory except for temporary shared memory mode when they're created
@@ -2045,6 +2077,22 @@ class CacheAllocator : public CacheBase {
   // mutex protecting the creation and destruction of workers poolRebalancer_,
   // poolResizer_, poolOptimizer_, memMonitor_, reaper_
   mutable std::mutex workersMutex_;
+
+  static constexpr size_t kShards = 8192; // TODO: need to define right value
+
+  struct MovesMapShard {
+    alignas(folly::hardware_destructive_interference_size) MoveMap movesMap_;
+  };
+
+  struct MoveLock {
+    alignas(folly::hardware_destructive_interference_size) std::mutex moveLock_;
+  };
+
+  // a map of all pending moves
+  std::vector<MovesMapShard> movesMap_;
+
+  // a map of move locks for each shard
+  std::vector<MoveLock> moveLock_;
 
   // time when the ram cache was first created
   const uint32_t cacheCreationTime_{0};
