@@ -134,15 +134,21 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
   // Bumps up the reference count only if the new count will be strictly less
   // than or equal to the maxCount.
   // @return true if refcount is bumped. false otherwise.
-  FOLLY_ALWAYS_INLINE bool incRef() noexcept {
+  FOLLY_ALWAYS_INLINE bool incRef() {
     Value* const refPtr = &refCount_;
     unsigned int nCASFailures = 0;
     constexpr bool isWeak = false;
+
+    Value bitMask = getAdminRef<kExclusive>();
     Value oldVal = __atomic_load_n(refPtr, __ATOMIC_RELAXED);
 
     while (true) {
+      const bool alreadyExclusive = oldVal & bitMask;
       const Value newCount = oldVal + static_cast<Value>(1);
       if (UNLIKELY((oldVal & kAccessRefMask) == (kAccessRefMask))) {
+        throw exception::RefcountOverflow("Refcount maxed out.");
+      }
+      if (alreadyExclusive) {
         return false;
       }
 
@@ -269,7 +275,14 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
     while (true) {
       const bool flagSet = curValue & conditionBitMask;
       const bool alreadyExclusive = curValue & bitMask;
+      const bool accessible = curValue & getAdminRef<kAccessible>();
       if (!flagSet || alreadyExclusive) {
+        return false;
+      }
+      if ((curValue & kAccessRefMask) != 0) {
+        return false;
+      }
+      if (!accessible) {
         return false;
       }
 
@@ -277,6 +290,7 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
       if (__atomic_compare_exchange_n(refPtr, &curValue, newValue, isWeak,
                                       __ATOMIC_ACQ_REL, __ATOMIC_RELAXED)) {
         XDCHECK(newValue & conditionBitMask);
+        XDCHECK(getAccessRef() == 0);
         return true;
       }
 
