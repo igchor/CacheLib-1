@@ -1302,7 +1302,7 @@ class CacheAllocator : public CacheBase {
 
  private:
   // wrapper around Item's refcount and active handle tracking
-  FOLLY_ALWAYS_INLINE void incRef(Item& it);
+  FOLLY_ALWAYS_INLINE bool incRef(Item& it);
   FOLLY_ALWAYS_INLINE RefcountWithFlags::Value decRef(Item& it);
 
   // drops the refcount and if needed, frees the allocation back to the memory
@@ -1453,11 +1453,12 @@ class CacheAllocator : public CacheBase {
   // Given an existing item, allocate a new one for the
   // existing one to later be moved into.
   //
-  // @param oldItem    the item we want to allocate a new item for
+  // @param oldItem      the item we want to allocate a new item for
+  // @param parentHandle handle to parent if oldItem is a chained item
   //
   // @return  handle to the newly allocated item
   //
-  WriteHandle allocateNewItemForOldItem(const Item& oldItem);
+  WriteHandle allocateNewItemForOldItem(const Item& oldItem, WriteHandle& parentHandle);
 
   // internal helper that grabs a refcounted handle to the item. This does
   // not record the access to reflect in the mmContainer.
@@ -1516,7 +1517,7 @@ class CacheAllocator : public CacheBase {
   //
   // @return true  If the move was completed, and the containers were updated
   //               successfully.
-  bool moveRegularItem(WriteHandle& oldItemHdl, WriteHandle& newItemHdl);
+  bool moveRegularItem(Item& oldItem, WriteHandle& newItemHdl);
 
   // template class for viewAsChainedAllocs that takes either ReadHandle or
   // WriteHandle
@@ -1543,7 +1544,7 @@ class CacheAllocator : public CacheBase {
   //
   // @return true  If the move was completed, and the containers were updated
   //               successfully.
-  bool moveChainedItem(ChainedItem& oldItem, WriteHandle& newItemHdl);
+  bool moveChainedItem(ChainedItem& oldItem, WriteHandle &parentHandle, WriteHandle& newItemHdl);
 
   // Transfers the chain ownership from parent to newParent. Parent
   // will be unmarked as having chained allocations. Parent will not be null
@@ -1571,8 +1572,8 @@ class CacheAllocator : public CacheBase {
   //
   // @return handle to the oldItem
   WriteHandle replaceChainedItemLocked(Item& oldItem,
-                                       WriteHandle newItemHdl,
-                                       const Item& parent);
+                                       WriteHandle &parentHandle,
+                                       WriteHandle newItemHdl);
 
   // Insert an item into MM container. The caller must hold a valid handle for
   // the item.
@@ -1751,7 +1752,8 @@ class CacheAllocator : public CacheBase {
   // @return    true  if the item has been moved
   //            false if we have exhausted moving attempts
   bool moveForSlabRelease(const SlabReleaseContext& ctx,
-                          WriteHandle& itemHdl,
+                          Item& oldItem,
+                          WriteHandle& parentHandle,
                           util::Throttler& throttler);
 
   // "Move" (by copying) the content in this item to another memory
@@ -1762,7 +1764,7 @@ class CacheAllocator : public CacheBase {
   //
   // @return    true  if the item has been moved
   //            false if we have exhausted moving attempts
-  bool tryMovingForSlabRelease(WriteHandle& itemHdl, WriteHandle& newItemHdl);
+  bool tryMovingForSlabRelease(Item& oldItem, WriteHandle& parentHandle, WriteHandle& newItemHdl);
 
   // Evict an item from access and mm containers and
   // ensure it is safe for freeing.
