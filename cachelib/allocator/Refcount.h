@@ -135,10 +135,22 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
   RefcountWithFlags(RefcountWithFlags&&) = delete;
   RefcountWithFlags& operator=(RefcountWithFlags&&) = delete;
 
+  // state of the item, determined by exclusive flag and ref count
+  enum incRefStatus {
+    // exlusive bit is not set
+    kOk,
+
+    // exclusive bit is set and ref count is non-zero
+    kMoving,
+
+    // exclusive bit is set and ref count is zero
+    kEvicting
+  };
+
   // Bumps up the reference count only if the new count will be strictly less
   // than or equal to the maxCount.
   // @return true if refcount is bumped. false otherwise.
-  FOLLY_ALWAYS_INLINE bool incRef(bool incIfExclusive = true) noexcept {
+  FOLLY_ALWAYS_INLINE incRefStatus incRef(bool incIfExclusive = true) {
     Value* const refPtr = &refCount_;
     unsigned int nCASFailures = 0;
     constexpr bool isWeak = false;
@@ -150,15 +162,15 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
       const bool alreadyExclusive = oldVal & bitMask;
       const Value newCount = oldVal + static_cast<Value>(1);
       if (UNLIKELY((oldVal & kAccessRefMask) == (kAccessRefMask))) {
-        return false;
+        throw exception::RefcountOverflow("Refcount maxed out");
       }
       if (alreadyExclusive && !incIfExclusive) {
-        return false;
+        return (oldVal & kAccessRefMask) == 0 ? kEvicting : kMoving;
       }
 
       if (__atomic_compare_exchange_n(refPtr, &oldVal, newCount, isWeak,
                                       __ATOMIC_ACQ_REL, __ATOMIC_RELAXED)) {
-        return true;
+        return kOk;
       }
 
       if ((++nCASFailures % 4) == 0) {
@@ -256,9 +268,10 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
   }
 
   /**
-   * The following four functions are used to track whether or not
-   * an item is currently in the process of being moved. This happens during a
-   * slab rebalance or resize operation or during eviction.
+   * The following six functions are used to track whether or not
+   * an item is currently in the process of being moved or evicted.
+   * This happens during a normal eviction,
+   * slab rebalance or resize operation.
    *
    * An item can only be marked exclusive when `isInMMContainer` returns true
    * and the item is not yet marked as exclusive. This operation is atomic.
@@ -267,49 +280,22 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
    * if the refcount is 0 and only the exlusive bit is set.
    *
    * Unmarking exclusive does not depend on `isInMMContainer`
+   *
    */
-  bool markExclusive(bool onlyIfRefCountZero) noexcept {
-    Value bitMask = getAdminRef<kExclusive>();
-    Value conditionBitMask = getAdminRef<kLinked>();
-
-    Value* const refPtr = &refCount_;
-    unsigned int nCASFailures = 0;
-    constexpr bool isWeak = false;
-    Value curValue = __atomic_load_n(refPtr, __ATOMIC_RELAXED);
-    while (true) {
-      const bool flagSet = curValue & conditionBitMask;
-      const bool alreadyExclusive = curValue & bitMask;
-      if (!flagSet || alreadyExclusive) {
-        return false;
-      }
-      if (onlyIfRefCountZero && (curValue & kAccessRefMask) != 0) {
-        return false;
-      }
-
-      const Value newValue = curValue | bitMask;
-      if (__atomic_compare_exchange_n(refPtr, &curValue, newValue, isWeak,
-                                      __ATOMIC_ACQ_REL, __ATOMIC_RELAXED)) {
-        XDCHECK(newValue & conditionBitMask);
-        return true;
-      }
-
-      if ((++nCASFailures % 4) == 0) {
-        // this pause takes up to 40 clock cycles on intel and the lock cmpxchgl
-        // above should take about 100 clock cycles. we pause once every 400
-        // cycles or so if we are extremely unlucky.
-        folly::asm_volatile_pause();
-      }
-    }
+  bool markEvicting() noexcept {
+    return markExclusive(true);
   }
-  Value unmarkExclusive() noexcept {
-    Value bitMask = ~getAdminRef<kExclusive>();
-    return __atomic_and_fetch(&refCount_, bitMask, __ATOMIC_ACQ_REL) & kRefMask;
+  bool markMoving() noexcept {
+    return markExclusive(false);
   }
-  bool isExclusive() const noexcept {
-    return getRaw() & getAdminRef<kExclusive>();
+  bool isEvicting() const noexcept {
+    return (getRaw() & getAdminRef<kExclusive>()) && (getRaw() & kAccessRefMask == 0u);
   }
-  bool isOnlyExclusive() const noexcept {
-    // An item is only exclusive when its refcount is zero and only the exlusive
+  bool isMoving() const noexcept {
+    return (getRaw() & getAdminRef<kExclusive>()) && (getRaw() & kAccessRefMask == 1u);
+  }
+  bool isOnlyEvicting() const noexcept {
+    // An item is only evicting when its refcount is zero and only the exlusive
     // bit among all the control bits is set. This indicates an item is already
     // on its way out of cache and does not need to be moved.
     auto ref = getRefWithAccessAndAdmin();
@@ -318,6 +304,17 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
       return false;
     }
     return ref & getAdminRef<kExclusive>();
+  }
+  bool isOnlyMoving() const noexcept {
+    // An item is only moving when its refcount is one and only the exlusive
+    // bit among all the control bits is set. This indicates an item is already
+    // on its way out of cache and does not need to be moved.
+    auto ref = getRefWithAccessAndAdmin();
+    auto anyOtherBitSet = (ref & ~getAdminRef<kExclusive>()) & ~kAccessRefMask;
+    if (anyOtherBitSet) {
+      return false;
+    }
+    return (ref & getAdminRef<kExclusive>()) && (ref & kAccessRefMask == 1u);
   }
 
   /**
@@ -402,6 +399,49 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
     static_assert(adminRef < kNumAccessRefBits + kNumAdminRefBits,
                   "incorrect control bit");
     return static_cast<Value>(1) << adminRef;
+  }
+
+  bool markExclusive(bool eviction) noexcept {
+    Value bitMask = getAdminRef<kExclusive>();
+    Value conditionBitMask = getAdminRef<kLinked>();
+
+    Value* const refPtr = &refCount_;
+    unsigned int nCASFailures = 0;
+    constexpr bool isWeak = false;
+    Value curValue = __atomic_load_n(refPtr, __ATOMIC_RELAXED);
+    while (true) {
+      const bool flagSet = curValue & conditionBitMask;
+      const bool alreadyExclusive = curValue & bitMask;
+      if (!flagSet || alreadyExclusive) {
+        return false;
+      }
+      if ((curValue & kAccessRefMask) != 0) {
+        return false;
+      }
+
+      Value newValue = curValue | bitMask;
+      if (!eviction) {
+        newValue += static_cast<Value>(1);
+      }
+
+      if (__atomic_compare_exchange_n(refPtr, &curValue, newValue, isWeak,
+                                      __ATOMIC_ACQ_REL, __ATOMIC_RELAXED)) {
+        XDCHECK(newValue & conditionBitMask);
+        return true;
+      }
+
+      if ((++nCASFailures % 4) == 0) {
+        // this pause takes up to 40 clock cycles on intel and the lock cmpxchgl
+        // above should take about 100 clock cycles. we pause once every 400
+        // cycles or so if we are extremely unlucky.
+        folly::asm_volatile_pause();
+      }
+    }
+  }
+
+  void unmarkExclusive() noexcept {
+    Value bitMask = ~getAdminRef<kExclusive>();
+    __atomic_and_fetch(&refCount_, bitMask, __ATOMIC_ACQ_REL) & kRefMask;
   }
 
   // why not use std::atomic? Because std::atomic does not work well with

@@ -1781,18 +1781,23 @@ class CacheAllocator : public CacheBase {
                            Item& item,
                            util::Throttler& throttler);
 
-  // Helper function to evict a normal item for slab release
+  // Creates putToken for nvmCache required by eviction functions
+  typename NvmCacheT::PutToken createNvmCachePutToken(Item& item);
+
+  // wakeup any waiters waiting for eviction/move to finish
+  void wakeUpWaiters(folly::StringPiece key, WriteHandle &handle);
+
+  // Helper function to evict a normal item
   //
   // @return last handle for corresponding to item on success. empty handle on
   // failure. caller can retry if needed.
-  void evictNormalItem(Item& item);
+  void evictNormalItem(Item& item, typename NvmCacheT::PutToken&& token);
 
   // Helper function to evict a child item for slab release
   // As a side effect, the parent item is also evicted
   //
-  // @return  last handle to the parent item of the child on success. empty
-  // handle on failure. caller can retry.
-  WriteHandle evictChainedItemForSlabRelease(ChainedItem& item);
+  // @return  pointer to parent item (marked as exclusive) on success. null otherwise
+  Item* evictChainedItemForSlabRelease(ChainedItem& item, typename NvmCacheT::PutToken&& token);
 
   // Helper function to remove a item if expired.
   //
@@ -1922,10 +1927,6 @@ class CacheAllocator : public CacheBase {
     return item.getRefCount() == 1 && item.isExpired();
   }
 
-  static bool parentEvictForSlabReleasePredicate(const Item& item) {
-    return item.getRefCount() == 1 && !item.isExclusive();
-  }
-
   std::unique_ptr<Deserializer> createDeserializer();
 
   // Execute func on each item. `func` can throw exception but must ensure
@@ -1963,6 +1964,57 @@ class CacheAllocator : public CacheBase {
   }
 
   // BEGIN private members
+
+  class MoveCtx {
+   public:
+    MoveCtx() {}
+
+    ~MoveCtx() {
+      // prevent any further enqueue to waiters
+      // Note: we don't need to hold locks since no one can enqueue
+      // after this point.
+      wakeUpWaiters();
+    }
+
+    // record the item handle. Upon destruction we will wake up the waiters
+    // and pass a clone of the handle to the callBack. By default we pass
+    // a null handle
+    void setItemHandle(WriteHandle _it) { it = std::move(_it); }
+
+    // enqueue a waiter into the waiter list
+    // @param  waiter       WaitContext
+    void addWaiter(std::shared_ptr<WaitContext<ReadHandle>> waiter) {
+      XDCHECK(waiter);
+      waiters.push_back(std::move(waiter));
+    }
+
+   private:
+    // notify all pending waiters that are waiting for the fetch.
+    void wakeUpWaiters() {
+      bool refcountOverflowed = false;
+      for (auto& w : waiters) {
+        // If refcount overflowed earlier, then we will return miss to
+        // all subsequent waitors.
+        if (refcountOverflowed) {
+          w->set(WriteHandle{});
+          continue;
+        }
+
+        try {
+          w->set(it.clone());
+        } catch (const exception::RefcountOverflow&) {
+          // We'll return a miss to the user's pending read,
+          // so we should enqueue a delete via NvmCache.
+          // TODO: cache.remove(it);
+          refcountOverflowed = true;
+        }
+      }
+    }
+
+    WriteHandle it; // will be set when Context is being filled
+    std::vector<std::shared_ptr<WaitContext<ReadHandle>>> waiters; // list of
+                                                                   // waiters
+  };
 
   using MoveMap =
       folly::F14ValueMap<folly::StringPiece,

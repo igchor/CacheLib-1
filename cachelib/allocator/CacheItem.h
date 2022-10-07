@@ -313,13 +313,12 @@ class CACHELIB_PACKED_ATTR CacheItem {
    */
   RefcountWithFlags::Value getRefCountAndFlagsRaw() const noexcept;
 
-  FOLLY_ALWAYS_INLINE bool incRef(bool incIfExclusive = true) {
-    return ref_.incRef(incIfExclusive);
-    //if (LIKELY()) {
-    //   return;
-    // }
-    // throw exception::RefcountOverflow(
-    //     folly::sformat("Refcount maxed out. item: {}", toString()));
+  FOLLY_ALWAYS_INLINE RefcountWithFlags::incRefStatus incRef(bool incIfExclusive = true) {
+    try {
+      return ref_.incRef(incIfExclusive);
+    } catch (exception::RefcountOverflow& e) {
+      throw folly::sformat("{}. item: {}", e.what(), toString());
+    }
   }
 
   FOLLY_ALWAYS_INLINE RefcountWithFlags::Value decRef() {
@@ -353,8 +352,8 @@ class CACHELIB_PACKED_ATTR CacheItem {
 
   /**
    * The following two functions corresond to whether or not an item is
-   * currently in the process of being moved. This happens during a slab
-   * rebalance, eviction or resize operation.
+   * currently in the process of being moved or evicted. This happens during a slab
+   * rebalance, eviction, resize or move operation.
    *
    * An item can only be marked exclusive when `isInMMContainer` returns true.
    * This operation is atomic.
