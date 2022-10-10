@@ -274,7 +274,6 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
     Value curValue = __atomic_load_n(refPtr, __ATOMIC_RELAXED);
     while (true) {
       const bool flagSet = curValue & conditionBitMask;
-      const bool accessible = curValue & getAdminRef<kAccessible>();
       const bool alreadyExclusive = curValue & bitMask;
       if (!flagSet || alreadyExclusive) {
         return false;
@@ -282,9 +281,6 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
       if ((curValue & kAccessRefMask) != 0) {
         return false;
       }
-      // if (!accessible) {
-      //   return false;
-      // }
 
       const Value newValue = curValue | bitMask;
       if (__atomic_compare_exchange_n(refPtr, &curValue, newValue, isWeak,

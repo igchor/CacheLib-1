@@ -1572,8 +1572,8 @@ class CacheAllocator : public CacheBase {
   //
   // @return handle to the oldItem
   WriteHandle replaceChainedItemLocked(Item& oldItem,
-                                       WriteHandle &parentHandle,
-                                       WriteHandle newItemHdl);
+                                       WriteHandle newItemHdl,
+                                       const Item &parent);
 
   // Insert an item into MM container. The caller must hold a valid handle for
   // the item.
@@ -1778,13 +1778,6 @@ class CacheAllocator : public CacheBase {
                            util::Throttler& throttler);
 
   typename NvmCacheT::PutToken createPutToken(Item& item);
-
-  // Helper function to evict a normal item for slab release
-  //
-  // @return last handle for corresponding to item on success. empty handle on
-  // failure. caller can retry if needed.
-  template <typename P>
-  WriteHandle evictNormalItem(Item& item, P&& predicate, typename NvmCacheT::PutToken&& putToken);
 
   // Helper function to remove a item if expired.
   //
