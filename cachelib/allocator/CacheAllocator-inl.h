@@ -1305,9 +1305,14 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
     }
 
     const auto ref = candidate->unmarkExclusive();
-    if (ref == 0u) {
+    if (ref == 0u || ref == 262144) {
+      if (ref == 262144) { // TODO: ???
+        removeFromMMContainer(*candidate);
+      }
+
       if (shouldWriteToNvmCacheExclusive(*candidate)) {
-        nvmCache_->put(acquire(candidate), std::move(token));
+        // auto handle = acquire(candidate);
+        //nvmCache_->put(handle, std::move(token)); // TODO
       }
 
       // recycle the item. it's safe to do so, even if toReleaseHandle was
@@ -1333,8 +1338,6 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
         return toRecycle;
       }
     } else {
-                XLOGF(WARN,
-                "Ref count {}", ref);
       if (candidate->hasChainedItem()) {
         stats_.evictFailParentAC.inc();
       } else {
@@ -1545,11 +1548,11 @@ CacheAllocator<CacheTrait>::removeImpl(HashedKey hk,
       nvmCache_->markNvmItemRemovedLocked(hk);
     }
   }
-  XDCHECK(!item.isAccessible()); // XXX: other thread could have reused the item already
+  XDCHECK(!item.isAccessible());
 
   // remove it from the mm container. this will be no-op if it is already
   // removed.
-  removeFromMMContainer(item); // TODO: should be under if()?
+  removeFromMMContainer(item);
 
   // Enqueue delete to nvmCache if we know from the item that it was pulled in
   // from NVM. If the item was not pulled in from NVM, it is not possible to
