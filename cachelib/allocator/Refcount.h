@@ -116,10 +116,6 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
     // unevictable in the past.
     kUnevictable_NOOP,
 
-    // Item is accecible but content is not ready yet. Used by eviction
-    // when Item is moved between memory tiers.
-    kIncomplete,
-
     // Unused. This is just to indciate the maximum number of flags
     kFlagMax,
   };
@@ -278,6 +274,7 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
     Value curValue = __atomic_load_n(refPtr, __ATOMIC_RELAXED);
     while (true) {
       const bool flagSet = curValue & conditionBitMask;
+      const bool accessible = curValue & getAdminRef<kAccessible>();
       const bool alreadyExclusive = curValue & bitMask;
       if (!flagSet || alreadyExclusive) {
         return false;
@@ -285,11 +282,15 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
       if ((curValue & kAccessRefMask) != 0) {
         return false;
       }
+      // if (!accessible) {
+      //   return false;
+      // }
 
       const Value newValue = curValue | bitMask;
       if (__atomic_compare_exchange_n(refPtr, &curValue, newValue, isWeak,
                                       __ATOMIC_ACQ_REL, __ATOMIC_RELAXED)) {
         XDCHECK(newValue & conditionBitMask);
+        XDCHECK(getAccessRef() == 0);
         return true;
       }
 
@@ -345,14 +346,6 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
   void markNvmEvicted() noexcept { return setFlag<kNvmEvicted>(); }
   void unmarkNvmEvicted() noexcept { return unSetFlag<kNvmEvicted>(); }
   bool isNvmEvicted() const noexcept { return isFlagSet<kNvmEvicted>(); }
-
-  /**
-   * Marks that the item is migrating between memory tiers and
-   * not ready for access now. Accessing thread should wait.
-   */
-  void markIncomplete() noexcept { return setFlag<kIncomplete>(); }
-  void unmarkIncomplete() noexcept { return unSetFlag<kIncomplete>(); }
-  bool isIncomplete() const noexcept { return isFlagSet<kIncomplete>(); }
 
   // Whether or not an item is completely drained of access
   // Refcount is 0 and the item is not linked, accessible, nor exclusive

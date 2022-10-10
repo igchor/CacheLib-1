@@ -1231,20 +1231,17 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
     Item* toRecycle = nullptr;
     Item* candidate = nullptr;
     typename NvmCacheT::PutToken token;
+                ++searchTries;
+            (*stats_.evictionAttempts)[pid][cid].inc();
+
 
     mmContainer.withEvictionIterator(
         [this, pid, cid, &candidate, &toRecycle, &searchTries, &mmContainer, &token](auto&& itr) {
-          if (!itr) {
-            ++searchTries;
-            (*stats_.evictionAttempts)[pid][cid].inc();
-            return;
-          }
 
           while ((config_.evictionSearchTries == 0 ||
                   config_.evictionSearchTries > searchTries) &&
                  itr) {
-            ++searchTries;
-            (*stats_.evictionAttempts)[pid][cid].inc();
+
 
             auto* toRecycle_ = itr.get();
             auto* candidate_ =
@@ -1261,7 +1258,7 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
               return;
             }
 
-            if (candidate->hasChainedItem()) {
+            if (candidate_->hasChainedItem()) {
               stats_.evictFailParentAC.inc();
             } else {
               stats_.evictFailAC.inc();
@@ -1281,36 +1278,47 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
     // evict what we think as parent and see if the eviction of parent
     // recycles the child we intend to.
     {
-      auto predicate = [](const Item& item) { return item.getRefCount() == 0; };
+      auto predicate = [](const Item& item) { 
+        auto ref = item.getRefCount();
+        XDCHECK_EQ(ref, 0u);
+        return ref == 0; };
       auto handle = evictNormalItem(*candidate, std::move(predicate), std::move(token));
-
-      // since we managed to mark item as moving, none should be able to access the item
-      XDCHECK(handle);
+      //handle.release();
     }
     const auto ref = candidate->unmarkExclusive();
-    XDCHECK_EQ(ref, 0u);
+    if (ref == 0u) {
+      // recycle the item. it's safe to do so, even if toReleaseHandle was
+      // NULL. If `ref` == 0 then it means that we are the last holder of
+      // that item.
+      if (candidate->hasChainedItem()) {
+        (*stats_.chainedItemEvictions)[pid][cid].inc();
+      } else {
+        (*stats_.regularItemEvictions)[pid][cid].inc();
+      }
 
-    // recycle the item. it's safe to do so, even if toReleaseHandle was
-    // NULL. If `ref` == 0 then it means that we are the last holder of
-    // that item.
-    if (candidate->hasChainedItem()) {
-      (*stats_.chainedItemEvictions)[pid][cid].inc();
+      if (auto eventTracker = getEventTracker()) {
+        eventTracker->record(AllocatorApiEvent::DRAM_EVICT, candidate->getKey(),
+                              AllocatorApiResult::EVICTED, candidate->getSize(),
+                              candidate->getConfiguredTTL().count());
+      }
+
+      // check if by releasing the item we intend to, we actually
+      // recycle the candidate.
+      if (ReleaseRes::kRecycled ==
+          releaseBackToAllocator(*candidate, RemoveContext::kEviction,
+                                  /* isNascent */ false, toRecycle)) {
+        return toRecycle;
+      } else {
+        //XDCHECK(candidate->hasChainedItem());
+      }
     } else {
-      (*stats_.regularItemEvictions)[pid][cid].inc();
-    }
-
-    if (auto eventTracker = getEventTracker()) {
-      eventTracker->record(AllocatorApiEvent::DRAM_EVICT, candidate->getKey(),
-                            AllocatorApiResult::EVICTED, candidate->getSize(),
-                            candidate->getConfiguredTTL().count());
-    }
-
-    // check if by releasing the item we intend to, we actually
-    // recycle the candidate.
-    if (ReleaseRes::kRecycled ==
-        releaseBackToAllocator(*candidate, RemoveContext::kEviction,
-                                /* isNascent */ false, toRecycle)) {
-      return toRecycle;
+                XLOGF(WARN,
+                "Ref count {}", ref);
+      if (candidate->hasChainedItem()) {
+        stats_.evictFailParentAC.inc();
+      } else {
+        stats_.evictFailAC.inc();
+      }
     }
   }
   return nullptr;
@@ -2597,22 +2605,25 @@ CacheAllocator<CacheTrait>::evictNormalItem(Item& item, P&& predicate, typename 
   // We remove the item from both access and mm containers. It doesn't matter
   // if someone else calls remove on the item at this moment, the item cannot
   // be freed as long as we have the exclusive bit set.
-  auto handle = accessContainer_->removeIf(item, std::move(predicate));
-  if (!handle) {
-    return handle;
+  // auto handle = accessContainer_->removeIf(item, std::move(predicate));
+  // if (!handle) {
+  //   return handle;
+  // }
+  if (accessContainer_->remove(item)) {
+    removeFromMMContainer(item);
   }
 
-  XDCHECK_EQ(reinterpret_cast<uintptr_t>(handle.get()),
-             reinterpret_cast<uintptr_t>(&item));
-  removeFromMMContainer(item);
+  // XDCHECK_EQ(reinterpret_cast<uintptr_t>(handle.get()),
+  //            reinterpret_cast<uintptr_t>(&item));
 
   // now that we are the only handle and we actually removed something from
   // the RAM cache, we enqueue it to nvmcache.
   if (shouldWriteToNvmCacheExclusive(item)) {
-    nvmCache_->put(handle, std::move(token));
+    //nvmCache_->put(handle, std::move(token));
   }
 
-  return handle;
+  //return WriteHandle{&item, *this};
+  return WriteHandle{};
 }
 
 template <typename CacheTrait>
