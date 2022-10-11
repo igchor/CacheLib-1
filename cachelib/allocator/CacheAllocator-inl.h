@@ -1113,7 +1113,7 @@ bool CacheAllocator<CacheTrait>::moveRegularItem(WriteHandle&& oldItemHdl,
   // make sure that no other thread removed it, and only then replaces it.
   if (!replaceInMMContainer(oldItem, *newItemHdl)) {
     accessContainer_->remove(*newItemHdl);
-    return false; // TODO: return true?
+    return false;
   }
 
   // Replacing into the MM container was successful, but someone could have
@@ -1121,7 +1121,7 @@ bool CacheAllocator<CacheTrait>::moveRegularItem(WriteHandle&& oldItemHdl,
   // replaceInMMContainer() operation, which would invalidate newItemHdl.
   if (!newItemHdl->isAccessible()) {
     removeFromMMContainer(*newItemHdl);
-    return false; // TODO: return true?
+    return false;
   }
 
   // no one can add or remove chained items at this point
@@ -1166,32 +1166,31 @@ bool CacheAllocator<CacheTrait>::moveChainedItem(ChainedItem& oldItem,
   auto l = chainedItemLocks_.lockExclusive(parentKey);
 
   // verify old item under the lock
-  if (!oldItem.isChainedItem() ||
-      &oldItem.getParentItem(compressor_) != &parentHandle->asChainedItem()) {
+  if (&oldItem.getParentItem(compressor_) != &parentHandle->asChainedItem()) {
     return false;
   }
 
   // Check if the oldItem is still in the chain
-  {
-    auto headHandle = findChainedItem(*parentHandle);
-    if (!headHandle) {
-      return false;
-    }
+  // {
+  //   auto headHandle = findChainedItem(*parentHandle);
+  //   if (!headHandle) {
+  //     return false;
+  //   }
 
-    ChainedItem* head = &headHandle.get()->asChainedItem();
-    bool found = false;
-    while (head) {
-      if (head == &oldItem) {
-        found = true;
-        break;
-      }
-      head = head->getNext(compressor_);
-    }
+  //   ChainedItem* head = &headHandle.get()->asChainedItem();
+  //   bool found = false;
+  //   while (head) {
+  //     if (head == &oldItem) {
+  //       found = true;
+  //       break;
+  //     }
+  //     head = head->getNext(compressor_);
+  //   }
 
-    if (!found) {
-      return false;
-    }
-  }
+  //   if (!found) {
+  //     return false;
+  //   }
+  // }
 
   // now that we now, that the item is still in the chain we know it cannot be
   // under eviction - we would not be able to get parent item in that case
@@ -2468,6 +2467,7 @@ bool CacheAllocator<CacheTrait>::moveForSlabRelease(
 
     if (allocator_->isAllocFreed(ctx, &oldItem)) {
       // nothing to do
+      XLOG(WARN, "WAS FREE");
       return true;
     }
 
@@ -2486,6 +2486,7 @@ bool CacheAllocator<CacheTrait>::moveForSlabRelease(
     if (newItemHdl) {
       isMoved = tryMovingForSlabRelease(oldItem, std::move(handle), newItemHdl);
       if (isMoved) {
+        XLOG(WARN, "FREED");
         break;
       }
     }
@@ -2600,48 +2601,37 @@ bool CacheAllocator<CacheTrait>::evictForSlabRelease(
     return true;
   }
 
-  auto *owner = toRelease.isChainedItem() ? &toRelease.asChainedItem().getParentItem(compressor_) : &toRelease;
-  auto handle = accessContainer_->find(owner->getKey());
-  if (!handle) {
+  auto *candidate = toRelease.isChainedItem() ? &toRelease.asChainedItem().getParentItem(compressor_) : &toRelease;
+  if (!candidate->markExclusive()) {
     return false;
   }
 
-  auto predicate = [](const Item& item) { return item.getRefCount() == 1; };
-  auto token = createPutToken(*handle);
+  auto token = createPutToken(*candidate);
+  if (accessContainer_->remove(*candidate)) {
+    removeFromMMContainer(*candidate);
+  }
 
-  auto owningHandle = accessContainer_->removeIf(*handle, std::move(predicate));
-  if (!owningHandle) {
+  if (candidate->unmarkExclusive() != 0u) {
     return false;
   }
 
-  removeFromMMContainer(*handle);
-
-  if (token.isValid() && shouldWriteToNvmCacheExclusive(*handle)) {
-    nvmCache_->put(handle, std::move(token));
+  if (token.isValid() && shouldWriteToNvmCacheExclusive(*candidate)) {
+      auto handle = acquire(candidate);
+      nvmCache_->put(handle, std::move(token));
+      auto r = decRef(*handle.release());
+      XDCHECK(r == 0u);
   }
-
-  // we managed to evict the corresponding owner of the item and have the
-  // last handle for the owner.
-  XDCHECK(owningHandle == handle);
-  XDCHECK_EQ(owningHandle->getRefCount(), 2);
-
-  // one handle is enough
-  owningHandle = std::move(handle);
 
   const auto allocInfo =
-      allocator_->getAllocInfo(static_cast<const void*>(owningHandle.get()));
-  if (owningHandle->hasChainedItem()) {
+      allocator_->getAllocInfo(static_cast<const void*>(candidate));
+  if (candidate->hasChainedItem()) {
     (*stats_.chainedItemEvictions)[allocInfo.poolId][allocInfo.classId].inc();
   } else {
     (*stats_.regularItemEvictions)[allocInfo.poolId][allocInfo.classId].inc();
   }
 
   stats_.numEvictionSuccesses.inc();
-
-  auto *item = owningHandle.release();
-  auto ref = decRef(*item);
-  XDCHECK(ref == 0);
-  return releaseBackToAllocator(*item, RemoveContext::kEviction, true, &toRelease);
+  return releaseBackToAllocator(*candidate, RemoveContext::kEviction, true, &toRelease);
 }
 
 template <typename CacheTrait>
