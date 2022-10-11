@@ -1344,14 +1344,15 @@ class CacheAllocator : public CacheBase {
   // @throw   runtime_error if _it_ has pending refs or is not a regular item.
   //          runtime_error if parent->chain is broken
   enum class ReleaseRes {
-    kRecycled,    // _it_ was released and _toRecycle_ was recycled
-    kNotRecycled, // _it_ was released and _toRecycle_ was not recycled
-    kReleased,    // toRecycle == nullptr and it was released
+    kRecycled,    // _it_ was released and _toRelease_ was recycled or null
+    kNotRecycled, // _it_ was released and _toRelease_ was not recycled
+    kReleased,    // recycle == false
   };
   ReleaseRes releaseBackToAllocator(Item& it,
                                     RemoveContext ctx,
                                     bool nascent = false,
-                                    const Item* toRecycle = nullptr);
+                                    const Item* toRelease = nullptr,
+                                    bool recycle = false);
 
   // acquires an handle on the item. returns an empty handle if it is null.
   // @param it    pointer to an item
@@ -1774,7 +1775,7 @@ class CacheAllocator : public CacheBase {
   // @param throttler   slow this function down as not to take too much cpu
   bool evictForSlabRelease(const SlabReleaseContext& ctx,
                            WriteHandle& itemHdl,
-                           Item* toRecycle,
+                           Item* toRelease,
                            util::Throttler& throttler);
 
   typename NvmCacheT::PutToken createPutToken(Item& item);

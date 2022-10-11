@@ -344,8 +344,7 @@ class CACHELIB_PACKED_ATTR CacheItem {
 
   /**
    * The following two functions corresond to whether or not an item is
-   * currently in the process of being moved. This happens during a slab
-   * rebalance, eviction or resize operation.
+   * currently in the process of being evicted.
    *
    * An item can only be marked exclusive when `isInMMContainer` returns true.
    * This operation is atomic.
@@ -357,6 +356,7 @@ class CACHELIB_PACKED_ATTR CacheItem {
    */
   bool markExclusive() noexcept;
   RefcountWithFlags::Value unmarkExclusive() noexcept;
+  bool isExclusive() const noexcept;
   bool isOnlyExclusive() const noexcept;
 
   /**
@@ -403,8 +403,6 @@ class CACHELIB_PACKED_ATTR CacheItem {
 
   using MMContainer =
       typename CacheTrait::MMType::template Container<Item, &Item::mmHook_>;
-
-  bool isExclusive() const noexcept; // XXX: friend for Handle?
 
  protected:
   // Refcount for the item and also flags on the items state
