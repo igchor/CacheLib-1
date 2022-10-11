@@ -716,7 +716,7 @@ template <typename CacheTrait>
 bool
 CacheAllocator<CacheTrait>::releaseBackToAllocator(Item& it,
                                                    RemoveContext ctx,
-                                                   bool nascent,
+                                                   bool callDestructor,
                                                    const Item* toRelease,
                                                    bool recycle) {
   if (!it.isDrained()) {
@@ -753,16 +753,13 @@ CacheAllocator<CacheTrait>::releaseBackToAllocator(Item& it,
     return &it == toRelease || !toRelease;
   }
 
-  // nascent items represent items that were allocated but never inserted into
-  // the cache. We should not be executing removeCB for them since they were
-  // not initialized from the user perspective and never part of the cache.
-  if (!nascent && config_.removeCb) {
+  if (callDestructor && config_.removeCb) {
     config_.removeCb(RemoveCbData{ctx, it, viewAsChainedAllocsRange(it)});
   }
 
   // only skip destructor for evicted items that are either in the queue to put
   // into nvm or already in nvm
-  if (!nascent && config_.itemDestructor &&
+  if (callDestructor && config_.itemDestructor &&
       (ctx != RemoveContext::kEviction || !it.isNvmClean() ||
        it.isNvmEvicted())) {
     try {
@@ -829,7 +826,7 @@ CacheAllocator<CacheTrait>::releaseBackToAllocator(Item& it,
         res = true;
       } 
       
-      if (!recycle) {
+      if (!recycle || (head != toRelease && toRelease)) {
         allocator_->free(head);
       }
 
@@ -843,7 +840,7 @@ CacheAllocator<CacheTrait>::releaseBackToAllocator(Item& it,
     res = true;
   } 
   
-  if (!recycle) {
+  if (!recycle || (&it != toRelease && toRelease)) {
     XDCHECK(it.isDrained());
     allocator_->free(&it);
   }
@@ -896,7 +893,7 @@ void CacheAllocator<CacheTrait>::release(Item* it, bool isNascent) {
   const auto ref = decRef(*it);
 
   if (UNLIKELY(ref == 0)) {
-    const auto res = releaseBackToAllocator(*it, RemoveContext::kNormal, isNascent);
+    const auto res = releaseBackToAllocator(*it, RemoveContext::kNormal, !isNascent);
     XDCHECK(res);
   }
 }
@@ -1348,7 +1345,7 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
       // check if by releasing the item we intend to, we actually
       // recycle the candidate.
       auto recycled = releaseBackToAllocator(*candidate, RemoveContext::kEviction,
-                                 /* isNascent */ false, toRecycle, true);
+                                 /* callDestructor */ true, toRecycle, /* recycle */ true);
       if (recycled) {
         return toRecycle;
       }
@@ -2644,8 +2641,7 @@ bool CacheAllocator<CacheTrait>::evictForSlabRelease(
   auto *item = owningHandle.release();
   auto ref = decRef(*item);
   XDCHECK(ref == 0);
-  return releaseBackToAllocator(*item, RemoveContext::kEviction,
-                                          false, &toRelease);
+  return releaseBackToAllocator(*item, RemoveContext::kEviction, true, &toRelease);
 }
 
 template <typename CacheTrait>

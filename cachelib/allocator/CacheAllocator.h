@@ -1345,7 +1345,7 @@ class CacheAllocator : public CacheBase {
   //          runtime_error if parent->chain is broken
   bool releaseBackToAllocator(Item& it,
                                     RemoveContext ctx,
-                                    bool nascent = false,
+                                    bool callDestructor = true,
                                     const Item* toRelease = nullptr,
                                     bool recycle = false);
 
