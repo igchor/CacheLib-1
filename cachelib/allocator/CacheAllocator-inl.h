@@ -794,8 +794,8 @@ CacheAllocator<CacheTrait>::releaseBackToAllocator(Item& it,
 
     if (head == nullptr || &head->getParentItem(compressor_) != &it) {
       throw std::runtime_error(folly::sformat(
-          "Mismatch parent pointer. This should not happen. Key: {} NULL? {}",
-          it.getKey(), head == nullptr));
+          "Mismatch parent pointer. This should not happen. Key: {}",
+          it.getKey(),));
     }
 
     if (!chainedItemAccessContainer_->remove(*head)) {
@@ -1300,19 +1300,21 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
     // for chained items, the ownership of the parent can change. We try to
     // evict what we think as parent and see if the eviction of parent
     // recycles the child we intend to.
-    if (accessContainer_->remove(*candidate)) {
+    // if (accessContainer_->remove(*candidate)) {
+    //   removeFromMMContainer(*candidate);
+    // }
+    auto removed = accessContainer_->remove(*candidate);
+    if (removed) {
       removeFromMMContainer(*candidate);
     }
 
     const auto ref = candidate->unmarkExclusive();
-    if (ref == 0u || ref == 262144) {
-      if (ref == 262144) { // TODO: ???
-        removeFromMMContainer(*candidate);
-      }
-
-      if (shouldWriteToNvmCacheExclusive(*candidate)) {
-        // auto handle = acquire(candidate);
-        //nvmCache_->put(handle, std::move(token)); // TODO
+    if (ref == 0u) {
+      if (token.isValid() && shouldWriteToNvmCacheExclusive(*candidate)) {
+        auto handle = acquire(candidate);
+        nvmCache_->put(handle, std::move(token));
+        auto r = decRef(*handle.release());
+        XDCHECK(r == 0u);
       }
 
       // recycle the item. it's safe to do so, even if toReleaseHandle was
@@ -1338,6 +1340,14 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
         return toRecycle;
       }
     } else {
+      if (removed) throw std::runtime_error("REMOVED");
+
+      if (ref != 262144) {
+        throw std::runtime_error("NOT LINKED");
+      }
+
+      while (candidate->isInMMContainer());
+
       if (candidate->hasChainedItem()) {
         stats_.evictFailParentAC.inc();
       } else {
@@ -2387,7 +2397,7 @@ void CacheAllocator<CacheTrait>::releaseSlabImpl(
   // Active allocations need to be freed before we can release this slab
   // The idea is:
   //  1. Iterate through each active allocation
-  //  2. Under AC lock, acquire ownership of this active allocation
+  //  2. Under AC lock, acquire handle to the item (or it's parent)
   //  3. If 2 is successful, Move or Evict
   //  4. Move on to the next item if current item is freed
   for (auto alloc : releaseContext.getActiveAllocations()) {
@@ -2598,7 +2608,7 @@ bool CacheAllocator<CacheTrait>::evictForSlabRelease(
 
   removeFromMMContainer(*handle);
 
-  if (shouldWriteToNvmCacheExclusive(*handle)) {
+  if (token.isValid() && shouldWriteToNvmCacheExclusive(*handle)) {
     nvmCache_->put(handle, std::move(token));
   }
 
