@@ -1334,21 +1334,16 @@ class CacheAllocator : public CacheBase {
   //
   // @param it    item to be released.
   // @param ctx   removal context
-  // @param toRecycle  An item that will be recycled, this item is to be
-  //                   ignored if it's found in the process of freeing
-  //                   a chained allocation
+  // @param toRelease  An item that is expected to be released by
+  //                   freeing _it_
+  // @param recycle    Whether item will be reused without returning
+  //                   to the allocator
   //
-  // @return One of ReleaseRes. In all cases, _it_ is always released back to
-  // the allocator unless an exception is thrown
   //
+  // @return whether releasing _it_ frees toRelease as well. _it_ is always freed
   // @throw   runtime_error if _it_ has pending refs or is not a regular item.
   //          runtime_error if parent->chain is broken
-  enum class ReleaseRes {
-    kRecycled,    // _it_ was released and _toRelease_ was recycled or null
-    kNotRecycled, // _it_ was released and _toRelease_ was not recycled
-    kReleased,    // recycle == false
-  };
-  ReleaseRes releaseBackToAllocator(Item& it,
+  bool releaseBackToAllocator(Item& it,
                                     RemoveContext ctx,
                                     bool nascent = false,
                                     const Item* toRelease = nullptr,
@@ -1459,7 +1454,8 @@ class CacheAllocator : public CacheBase {
   //
   // @return  handle to the newly allocated item
   //
-  WriteHandle allocateNewItemForOldItem(const Item& oldItem, WriteHandle& parentHandle);
+  WriteHandle allocateNewItemForOldItem(const Item& oldItem,
+                                        WriteHandle& parentHandle);
 
   // internal helper that grabs a refcounted handle to the item. This does
   // not record the access to reflect in the mmContainer.
@@ -1513,12 +1509,12 @@ class CacheAllocator : public CacheBase {
   // callback is responsible for copying the contents and fixing the semantics
   // of chained item.
   //
-  // @param oldItem     Reference to the item being moved
+  // @param oldItemHdl  Reference to the handle of the item being moved
   // @param newItemHdl  Reference to the handle of the new item being moved into
   //
   // @return true  If the move was completed, and the containers were updated
   //               successfully.
-  bool moveRegularItem(Item& oldItem, WriteHandle& newItemHdl);
+  bool moveRegularItem(WriteHandle&& oldItemHdl, WriteHandle& newItemHdl);
 
   // template class for viewAsChainedAllocs that takes either ReadHandle or
   // WriteHandle
@@ -1545,7 +1541,9 @@ class CacheAllocator : public CacheBase {
   //
   // @return true  If the move was completed, and the containers were updated
   //               successfully.
-  bool moveChainedItem(ChainedItem& oldItem, WriteHandle &parentHandle, WriteHandle& newItemHdl);
+  bool moveChainedItem(ChainedItem& oldItem,
+                       WriteHandle&& parentHandle,
+                       WriteHandle& newItemHdl);
 
   // Transfers the chain ownership from parent to newParent. Parent
   // will be unmarked as having chained allocations. Parent will not be null
@@ -1574,7 +1572,7 @@ class CacheAllocator : public CacheBase {
   // @return handle to the oldItem
   WriteHandle replaceChainedItemLocked(Item& oldItem,
                                        WriteHandle newItemHdl,
-                                       const Item &parent);
+                                       const Item& parent);
 
   // Insert an item into MM container. The caller must hold a valid handle for
   // the item.
@@ -1736,25 +1734,19 @@ class CacheAllocator : public CacheBase {
   // @param releaseContext  slab release context
   void releaseSlabImpl(const SlabReleaseContext& releaseContext);
 
-  // @return  true when successfully marked as moving,
-  //          fasle when this item has already been freed
-  WriteHandle acquireItemForSlabRelease(const SlabReleaseContext& ctx,
-                                   void* alloc,
-                                   util::Throttler& throttler);
-
   // "Move" (by copying) the content in this item to another memory
   // location by invoking the move callback.
   //
   //
   // @param ctx         slab release context
-  // @param item        old item to be moved elsewhere
+  // @param oldItem     old item to be moved elsewhere
+  // @param handle      handle to the item or to it's parent (if chained)
   // @param throttler   slow this function down as not to take too much cpu
   //
   // @return    true  if the item has been moved
   //            false if we have exhausted moving attempts
   bool moveForSlabRelease(const SlabReleaseContext& ctx,
                           Item& oldItem,
-                          WriteHandle& parentHandle,
                           util::Throttler& throttler);
 
   // "Move" (by copying) the content in this item to another memory
@@ -1765,7 +1757,9 @@ class CacheAllocator : public CacheBase {
   //
   // @return    true  if the item has been moved
   //            false if we have exhausted moving attempts
-  bool tryMovingForSlabRelease(Item& oldItem, WriteHandle& parentHandle, WriteHandle& newItemHdl);
+  bool tryMovingForSlabRelease(Item& oldItem,
+                               WriteHandle&& handle,
+                               WriteHandle& newItemHdl);
 
   // Evict an item from access and mm containers and
   // ensure it is safe for freeing.
@@ -1774,8 +1768,7 @@ class CacheAllocator : public CacheBase {
   // @param item        old item to be moved elsewhere
   // @param throttler   slow this function down as not to take too much cpu
   bool evictForSlabRelease(const SlabReleaseContext& ctx,
-                           WriteHandle& itemHdl,
-                           Item* toRelease,
+                           Item& toRelease,
                            util::Throttler& throttler);
 
   typename NvmCacheT::PutToken createPutToken(Item& item);
