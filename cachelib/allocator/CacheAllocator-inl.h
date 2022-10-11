@@ -2621,6 +2621,7 @@ bool CacheAllocator<CacheTrait>::evictForSlabRelease(
   handle.release();
   auto *item = owningHandle.release();
 
+  decRef(*item);
   const auto ref = decRef(*item);
   XDCHECK(ref == 0);
   const auto res = releaseBackToAllocator(*item, RemoveContext::kEviction, false, toRelease, false);
