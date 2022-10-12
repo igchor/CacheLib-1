@@ -1291,7 +1291,15 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
           toRecycle = toRecycle_;
           candidate = candidate_;
           token = createPutToken(*candidate);
-          mmContainer.remove(itr);
+
+          // check if parent changed to chained items - if yes, we cannot remove
+          // the child from the mmContainer as we will not be evicting it
+          // we could abort right here, but we need to cleanup in case
+          // unmarkExclusive() returns 0 - so just go through normal path
+          if (!toRecycle_->isChainedItem() ||
+              &toRecycle->asChainedItem().getParentItem(compressor_) ==
+                  candidate)
+            mmContainer.remove(itr);
           return;
         }
 
