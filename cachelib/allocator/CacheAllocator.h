@@ -111,6 +111,9 @@ template <typename AllocatorT>
 class BaseAllocatorTest;
 
 template <typename AllocatorT>
+class AllocatorMemoryTiersTest;
+
+template <typename AllocatorT>
 class AllocatorHitStatsTest;
 
 template <typename AllocatorT>
@@ -1322,7 +1325,8 @@ class CacheAllocator : public CacheBase {
   ReleaseRes releaseBackToAllocator(Item& it,
                                     RemoveContext ctx,
                                     bool nascent = false,
-                                    const Item* toRecycle = nullptr);
+                                    const Item* toRecycle = nullptr,
+                                    bool chainedItemMoved = false);
 
   // acquires an handle on the item. returns an empty handle if it is null.
   // @param it    pointer to an item
@@ -1422,6 +1426,10 @@ class CacheAllocator : public CacheBase {
   //            if the item is invalid
   WriteHandle allocateChainedItemInternal(const ReadHandle& parent,
                                           uint32_t size);
+  
+  WriteHandle allocateChainedItemInternalTier(const ReadHandle& parent,
+                                          TierId tid,
+                                          uint32_t size);
 
   // Given an item and its parentKey, validate that the parentKey
   // corresponds to an item that's the parent of the supplied item.
@@ -1500,7 +1508,17 @@ class CacheAllocator : public CacheBase {
   //               successfully.
   template <typename P>
   WriteHandle moveRegularItemWithSync(Item& oldItem, WriteHandle& newItemHdl, P&& predicate);
-
+  
+  // Moves a chained item to a different memory tier.
+  //
+  // @param oldItem     Reference to the item being moved
+  // @param newItemHdl  Reference to the handle of the new item being moved into
+  //
+  // @return WriteHandle  If the move was completed, and the containers were updated
+  //               successfully.
+  template <typename P>
+  WriteHandle moveChainedItemWithSync(ChainedItem& oldItem, WriteHandle& newItemHdl, P&& predicate);
+  
   // Moves a regular item to a different slab. This should only be used during
   // slab release after the item's moving bit has been set. The user supplied
   // callback is responsible for copying the contents and fixing the semantics
@@ -2232,6 +2250,8 @@ class CacheAllocator : public CacheBase {
   FRIEND_TEST(CachelibAdminTest, WorkingSetAnalysisLoggingTest);
   template <typename AllocatorT>
   friend class facebook::cachelib::tests::BaseAllocatorTest;
+  template <typename AllocatorT>
+  friend class facebook::cachelib::tests::AllocatorMemoryTiersTest;
   template <typename AllocatorT>
   friend class facebook::cachelib::tests::AllocatorHitStatsTest;
   template <typename AllocatorT>
