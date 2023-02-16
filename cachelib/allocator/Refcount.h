@@ -266,13 +266,15 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
    */
   bool markForEviction() noexcept {
     Value linkedBitMask = getAdminRef<kLinked>();
+    Value accessibleBitMask = getAdminRef<kAccessible>();
     Value exclusiveBitMask = getAdminRef<kExclusive>();
 
-    auto predicate = [linkedBitMask, exclusiveBitMask](const Value curValue) {
+    auto predicate = [linkedBitMask, accessibleBitMask, exclusiveBitMask](const Value curValue) {
       const bool linked = curValue & linkedBitMask;
+      const bool accessible = curValue & accessibleBitMask;
       const bool alreadyExclusive = curValue & exclusiveBitMask;
 
-      if (!linked || alreadyExclusive) {
+      if (!linked || !accessible || alreadyExclusive) {
         return false;
       }
       if ((curValue & kAccessRefMask) != 0) {
@@ -321,13 +323,15 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
    */
   bool markMoving() {
     Value linkedBitMask = getAdminRef<kLinked>();
+    Value accessibleBitMask = getAdminRef<kAccessible>();
     Value exclusiveBitMask = getAdminRef<kExclusive>();
 
-    auto predicate = [linkedBitMask, exclusiveBitMask](const Value curValue) {
+    auto predicate = [linkedBitMask, accessibleBitMask, exclusiveBitMask](const Value curValue) {
       const bool linked = curValue & linkedBitMask;
+      const bool accessible = curValue & accessibleBitMask;
       const bool alreadyExclusive = curValue & exclusiveBitMask;
 
-      if (!linked || alreadyExclusive) {
+      if (!linked || !accessible || alreadyExclusive) {
         return false;
       }
       if (UNLIKELY((curValue & kAccessRefMask) == (kAccessRefMask))) {
