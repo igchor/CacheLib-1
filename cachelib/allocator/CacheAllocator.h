@@ -1610,6 +1610,93 @@ class CacheAllocator : public CacheBase {
   //              not exist.
   FOLLY_ALWAYS_INLINE WriteHandle findFastImpl(Key key, AccessMode mode);
 
+    struct MovingItemContext {
+    MovingItemContext(CacheAllocator& cache, bool lastTier):
+      cache(cache), lastTier(lastTier) {
+    }
+
+    bool lock(Item* item) {
+      bool marked;
+      if (lastTier) {
+        // if it's last tier, the item will be evicted
+        // need to create put token before marking it exclusive
+        token = cache.createPutToken(*item);
+        marked = item->markForEviction();
+      } else {
+        marked = item->markMoving(true);
+      }
+
+      if (marked) {
+        key = item->getKey();
+        this->item = item;
+      }
+
+      return marked;
+    }
+
+    Item& getItem() {
+      XDCHECK(item);
+      return *item;
+    }
+
+    void setNewHandle(WriteHandle&& handle) {
+      // mark new item as moving to block readers until the data is copied
+      // (moveCb is called). Mark item in MMContainer temporarily (TODO: should
+      // we remove markMoving requirement for the item to be linked?)
+      handle->markInMMContainer();
+      auto marked = handle->markMoving(false /* there is already a handle */);
+      handle->unmarkInMMContainer();
+      XDCHECK(marked);
+
+      this->newHandle = std::move(handle);
+    }
+
+  WriteHandle& handle() {return newHandle;}
+
+    ~MovingItemContext() {
+      if (!item)
+        return;
+
+      if (!newHandle) {
+        bool failedToReplace = !item->isAccessible();
+        if (!token.isValid() && !failedToReplace) {
+          token = cache.createPutToken(*item);
+        }
+        if (!lastTier) {
+          auto ret = item->markForEvictionWhenMoving();
+          XDCHECK(ret);
+        }
+
+        cache.unlinkItemForEviction(*item);
+
+        if (token.isValid() && cache.shouldWriteToNvmCacheExclusive(*item)
+            && !failedToReplace) {
+            cache.nvmCache_->put(*item, std::move(token));
+        }
+
+        cache.wakeUpWaiters(*item, {});
+      } else {
+        auto ref = item->unmarkMoving();
+        XDCHECK(ref == 0);
+
+        ref = newHandle->unmarkMoving();
+        if (ref == 0) {
+          cache.releaseBackToAllocator(*newHandle, RemoveContext::kNormal, newHandle.isNascent());
+          newHandle = nullptr;
+        }
+
+        cache.wakeUpWaiters(*item, std::move(newHandle));
+      }
+    }
+  private:
+    CacheAllocator& cache;
+    bool lastTier;
+    folly::StringPiece key;
+    Item *item;
+    typename NvmCacheT::PutToken token;
+    WriteHandle newHandle = {};
+  };
+
   // Moves a regular item to a different memory tier.
   //
   // @param oldItem     Reference to the item being moved
@@ -1617,6 +1704,9 @@ class CacheAllocator : public CacheBase {
   //
   // @return true  If the move was completed, and the containers were updated
   //               successfully.
+  bool moveRegularItemWithSync(MovingItemContext& oldItem, WriteHandle& newItemHdl);
+
+  // TODO: remove
   bool moveRegularItemWithSync(Item& oldItem, WriteHandle& newItemHdl);
 
   // Moves a regular item to a different slab. This should only be used during
@@ -1788,6 +1878,8 @@ class CacheAllocator : public CacheBase {
   //         handle to the item. On failure an empty handle.
   WriteHandle tryEvictToNextMemoryTier(TierId tid, PoolId pid, Item& item, bool fromBgThread);
 
+  WriteHandle tryEvictToNextMemoryTier(TierId tid, PoolId pid, MovingItemContext& item, bool fromBgThread);
+
   WriteHandle tryPromoteToNextMemoryTier(TierId tid, PoolId pid, Item& item, bool fromBgThread);
 
   WriteHandle tryPromoteToNextMemoryTier(Item& item, bool fromBgThread);
@@ -1811,6 +1903,8 @@ class CacheAllocator : public CacheBase {
   // @return valid handle to the item. This will be the last
   //         handle to the item. On failure an empty handle. 
   WriteHandle tryEvictToNextMemoryTier(Item& item, bool fromBgThread);
+
+    WriteHandle tryEvictToNextMemoryTier(MovingItemContext& item, bool fromBgThread);
 
   // Deserializer CacheAllocatorMetadata and verify the version
   //
@@ -2300,6 +2394,7 @@ auto& mmContainer = getMMContainer(tid, pid, cid);
           refcountOverflowed = true;
         }
       }
+      waiters.clear();
     }
 
     WriteHandle it; // will be set when Context is being filled
