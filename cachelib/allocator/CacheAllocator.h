@@ -1610,73 +1610,150 @@ class CacheAllocator : public CacheBase {
   //              not exist.
   FOLLY_ALWAYS_INLINE WriteHandle findFastImpl(Key key, AccessMode mode);
 
-    struct MovingItemContext {
-    MovingItemContext(CacheAllocator& cache, bool lastTier):
-      cache(cache), lastTier(lastTier) {
+  struct EvictingItemContext {
+    static void tryCreate(std::optional<EvictingItemContext>& opt, CacheAllocator& cache, Item &item) {
+      auto token = cache.createPutToken(item);
+      if (!token.isValid() && cache.shouldWriteToNvmCache(item)) {
+        return;
+      }
+      if(item.markForEviction())
+        opt.emplace(std::ref(cache), std::ref(item), std::move(token));
     }
 
-    bool lock(Item* item) {
-      bool marked;
-      if (lastTier) {
-        // if it's last tier, the item will be evicted
-        // need to create put token before marking it exclusive
-        token = cache.createPutToken(*item);
-        marked = item->markForEviction();
-      } else {
-        marked = item->markMoving(true);
+    static EvictingItemContext createWhenMoving(CacheAllocator& cache, Item &item) {
+      auto token = cache.createPutToken(item);
+      auto ret = item.markForEvictionWhenMoving();
+      XDCHECK(ret);
+      return EvictingItemContext(cache, item, std::move(token));
+    }
+
+    ~EvictingItemContext() {
+      cache.unlinkItemForEviction(item);
+      if (token.isValid() && cache.shouldWriteToNvmCacheExclusive(item)) {
+        cache.nvmCache_->put(item, std::move(token));
+      }
+    }
+
+ // private:
+    EvictingItemContext(CacheAllocator& cache, Item &item, typename NvmCacheT::PutToken &&token):
+      cache(cache), item(item), token(std::move(token)) {
+    }
+
+    CacheAllocator& cache;
+    Item &item;
+    typename NvmCacheT::PutToken token = {};
+  };
+
+  struct MovingItemContext {
+    static void tryCreate(std::optional<MovingItemContext>& opt, CacheAllocator& cache, Item &item) {
+      if (item.markMoving(true))
+        opt.emplace(std::ref(cache), std::ref(item));
+    }
+
+    Item& getItem() { return item; }
+
+    void moveItem(WriteHandle&& newItemHdl) { // TODO -> bool?
+      XDCHECK(item.isMoving());
+      XDCHECK(!item.isExpired());
+      XDCHECK_EQ(newItemHdl->getSize(), item.getSize());
+
+      // take care of the flags before we expose the item to be accessed. this
+      // will ensure that when another thread removes the item from RAM, we issue
+      // a delete accordingly. See D7859775 for an example
+      if (item.isNvmClean()) {
+        newItemHdl->markNvmClean();
       }
 
-      if (marked) {
-        key = item->getKey();
-        this->item = item;
-      }
-
-      return marked;
-    }
-
-    Item& getItem() {
-      XDCHECK(item);
-      return *item;
-    }
-
-    void setNewHandle(WriteHandle&& handle) {
       // mark new item as moving to block readers until the data is copied
       // (moveCb is called). Mark item in MMContainer temporarily (TODO: should
       // we remove markMoving requirement for the item to be linked?)
-      handle->markInMMContainer();
-      auto marked = handle->markMoving(false /* there is already a handle */);
-      handle->unmarkInMMContainer();
+      newItemHdl->markInMMContainer();
+      auto marked = newItemHdl->markMoving(false /* there is already a handle */);
+      newItemHdl->unmarkInMMContainer();
       XDCHECK(marked);
 
-      this->newHandle = std::move(handle);
+      auto predicate = [&](const Item& item){
+        // we rely on moving flag being set (it should block all readers)
+        XDCHECK(item.getRefCount() == 0);
+        return true;
+      };
+
+      auto replaced = cache.accessContainer_->replaceIf(item, *newItemHdl,
+                                      predicate);
+      // another thread may have called insertOrReplace which could have
+      // marked this item as unaccessible causing the replaceIf
+      // in the access container to fail - in this case we want
+      // to abort the move since the item is no longer valid
+      if (!replaced) {
+          return;
+      }
+      // what if another thread calls insertOrReplace now when
+      // the item is moving and already replaced in the hash table?
+      // 1. it succeeds in updating the hash table - so there is
+      //    no guarentee that isAccessible() is true
+      // 2. it will then try to remove from MM container
+      //     - this operation will wait for newItemHdl to
+      //       be unmarkedMoving via the waitContext
+      // 3. replaced handle is returned and eventually drops
+      //    ref to 0 and the item is recycled back to allocator.
+
+      if (cache.config_.moveCb) {
+        // Execute the move callback. We cannot make any guarantees about the
+        // consistency of the old item beyond this point, because the callback can
+        // do more than a simple memcpy() e.g. update external references. If there
+        // are any remaining handles to the old item, it is the caller's
+        // responsibility to invalidate them. The move can only fail after this
+        // statement if the old item has been removed or replaced, in which case it
+        // should be fine for it to be left in an inconsistent state.
+        cache.config_.moveCb(item, *newItemHdl, nullptr);
+      } else {
+        std::memcpy(newItemHdl->getMemory(), item.getMemory(),
+                    item.getSize());
+      }
+
+      // Adding the item to mmContainer has to succeed since no one can remove the item
+      auto& newContainer = cache.getMMContainer(*newItemHdl);
+      auto mmContainerAdded = newContainer.add(*newItemHdl);
+      XDCHECK(mmContainerAdded);
+
+      // no one can add or remove chained items at this point
+      if (item.hasChainedItem()) {
+        // safe to acquire handle for a moving Item
+        auto incRes = cache.incRef(item, false);
+        XDCHECK(incRes == RefcountWithFlags::incResult::incOk);
+        auto oldHandle = WriteHandle{&item,cache};
+        XDCHECK_EQ(1u, oldHandle->getRefCount()) << oldHandle->toString();
+        XDCHECK(!newItemHdl->hasChainedItem()) << newItemHdl->toString();
+        try {
+          auto l = cache.chainedItemLocks_.lockExclusive(item.getKey());
+          cache.transferChainLocked(oldHandle, newItemHdl);
+        } catch (const std::exception& e) {
+          // this should never happen because we drained all the handles.
+          XLOGF(DFATAL, "{}", e.what());
+          throw;
+        }
+
+        XDCHECK(!item.hasChainedItem());
+        XDCHECK(newItemHdl->hasChainedItem());
+      }
+      newItemHdl.unmarkNascent();
+      return;
     }
 
-  WriteHandle& handle() {return newHandle;}
-
     ~MovingItemContext() {
-      if (!item)
-        return;
-
       if (!newHandle) {
-        bool failedToReplace = !item->isAccessible();
-        if (!token.isValid() && !failedToReplace) {
-          token = cache.createPutToken(*item);
-        }
-        if (!lastTier) {
-          auto ret = item->markForEvictionWhenMoving();
-          XDCHECK(ret);
-        }
+        bool failedToReplace = !item.isAccessible();
 
-        cache.unlinkItemForEviction(*item);
-
-        if (token.isValid() && cache.shouldWriteToNvmCacheExclusive(*item)
-            && !failedToReplace) {
-            cache.nvmCache_->put(*item, std::move(token));
+        if (!failedToReplace) {
+          auto evictionCtx = EvictingItemContext::createWhenMoving(cache, item);
+        } else {
+          cache.unlinkItemForEviction(item);
+          cache.wakeUpWaiters(item, {});
         }
-
-        cache.wakeUpWaiters(*item, {});
       } else {
-        auto ref = item->unmarkMoving();
+        XDCHECK(!item.isAccessible());
+
+        auto ref = item.unmarkMoving();
         XDCHECK(ref == 0);
 
         ref = newHandle->unmarkMoving();
@@ -1685,15 +1762,17 @@ class CacheAllocator : public CacheBase {
           newHandle = nullptr;
         }
 
-        cache.wakeUpWaiters(*item, std::move(newHandle));
+        cache.wakeUpWaiters(item, std::move(newHandle));
       }
     }
-  private:
+  // private:
+    MovingItemContext(CacheAllocator& cache, Item& item):
+      cache(cache), item(item) {
+    }
+
     CacheAllocator& cache;
-    bool lastTier;
-    folly::StringPiece key;
-    Item *item;
-    typename NvmCacheT::PutToken token;
+    Item &item;
+
     WriteHandle newHandle = {};
   };
 
@@ -1704,7 +1783,6 @@ class CacheAllocator : public CacheBase {
   //
   // @return true  If the move was completed, and the containers were updated
   //               successfully.
-  bool moveRegularItemWithSync(MovingItemContext& oldItem, WriteHandle& newItemHdl);
 
   // TODO: remove
   bool moveRegularItemWithSync(Item& oldItem, WriteHandle& newItemHdl);
@@ -1878,7 +1956,7 @@ class CacheAllocator : public CacheBase {
   //         handle to the item. On failure an empty handle.
   WriteHandle tryEvictToNextMemoryTier(TierId tid, PoolId pid, Item& item, bool fromBgThread);
 
-  WriteHandle tryEvictToNextMemoryTier(TierId tid, PoolId pid, MovingItemContext& item, bool fromBgThread);
+  void tryEvictToNextMemoryTier(TierId tid, PoolId pid, MovingItemContext& item, bool fromBgThread);
 
   WriteHandle tryPromoteToNextMemoryTier(TierId tid, PoolId pid, Item& item, bool fromBgThread);
 
@@ -1904,7 +1982,7 @@ class CacheAllocator : public CacheBase {
   //         handle to the item. On failure an empty handle. 
   WriteHandle tryEvictToNextMemoryTier(Item& item, bool fromBgThread);
 
-    WriteHandle tryEvictToNextMemoryTier(MovingItemContext& item, bool fromBgThread);
+  void tryEvictToNextMemoryTier(MovingItemContext& item, bool fromBgThread);
 
   // Deserializer CacheAllocatorMetadata and verify the version
   //
