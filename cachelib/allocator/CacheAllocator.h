@@ -2254,6 +2254,9 @@ auto& mmContainer = getMMContainer(tid, pid, cid);
 
   size_t wakeUpWaitersLocked(folly::StringPiece key, WriteHandle&& handle);
 
+  std::vector<std::thread::id> wakeUpWaitersLockedVec(Item* item, folly::StringPiece key,
+  WriteHandle&& handle);
+
   class MoveCtx {
    public:
     MoveCtx() {}
@@ -2274,10 +2277,17 @@ auto& mmContainer = getMMContainer(tid, pid, cid);
     // @param  waiter       WaitContext
     void addWaiter(std::shared_ptr<WaitContext<ReadHandle>> waiter) {
       XDCHECK(waiter);
-      waiters.push_back(std::move(waiter));
+      waiters.emplace_back(std::move(waiter), std::this_thread::get_id());
     }
 
     size_t numWaiters() const { return waiters.size(); }
+
+    std::vector<std::thread::id> getWaitersIds() {
+      std::vector<std::thread::id> v;
+      for (auto &w : waiters)
+        v.push_back(w.second);
+      return v;
+    }
 
    private:
     // notify all pending waiters that are waiting for the fetch.
@@ -2287,12 +2297,12 @@ auto& mmContainer = getMMContainer(tid, pid, cid);
         // If refcount overflowed earlier, then we will return miss to
         // all subsequent waitors.
         if (refcountOverflowed) {
-          w->set(WriteHandle{});
+          w.first->set(WriteHandle{});
           continue;
         }
 
         try {
-          w->set(it.clone());
+          w.first->set(it.clone());
         } catch (const exception::RefcountOverflow&) {
           // We'll return a miss to the user's pending read,
           // so we should enqueue a delete via NvmCache.
@@ -2303,13 +2313,20 @@ auto& mmContainer = getMMContainer(tid, pid, cid);
     }
 
     WriteHandle it; // will be set when Context is being filled
-    std::vector<std::shared_ptr<WaitContext<ReadHandle>>> waiters; // list of
+    std::vector<std::pair<std::shared_ptr<WaitContext<ReadHandle>>, std::thread::id>> waiters; // list of
                                                                    // waiters
   };
   using MoveMap =
       folly::F14ValueMap<folly::StringPiece,
                          std::unique_ptr<MoveCtx>,
                          folly::HeterogeneousAccessHash<folly::StringPiece>>;
+
+  struct Trap {
+    using value = std::pair<Item*, std::string>;
+    alignas(folly::hardware_destructive_interference_size) folly::F14ValueMap<folly::StringPiece,
+                         value,
+                         folly::HeterogeneousAccessHash<folly::StringPiece>> values;
+  };
 
   static size_t getShardForKey(folly::StringPiece key) {
     return folly::Hash()(key) % kShards;
@@ -2321,6 +2338,10 @@ auto& mmContainer = getMMContainer(tid, pid, cid);
 
   MoveMap& getMoveMap(folly::StringPiece key) {
     return getMoveMapForShard(getShardForKey(key));
+  }
+
+  Trap& getMoveTrap(size_t shard) {
+    return moveTrap_[shard];
   }
 
   std::unique_lock<std::mutex> getMoveLockForShard(size_t shard) {
@@ -2442,6 +2463,8 @@ auto& mmContainer = getMMContainer(tid, pid, cid);
 
   // a map of move locks for each shard
   std::vector<MoveLock> moveLock_;
+
+  std::vector<Trap> moveTrap_;
 
   // time when the ram cache was first created
   const uint32_t cacheCreationTime_{0};

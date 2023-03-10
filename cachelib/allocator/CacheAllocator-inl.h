@@ -87,6 +87,7 @@ CacheAllocator<CacheTrait>::CacheAllocator(
                         std::make_shared<MurmurHash2>()),
       movesMap_(kShards),
       moveLock_(kShards), 
+      moveTrap_(kShards),
       cacheCreationTime_{
           type != InitMemType::kMemAttach
               ? util::getCurrentTimeSec()
@@ -1285,12 +1286,34 @@ size_t CacheAllocator<CacheTrait>::wakeUpWaitersLocked(folly::StringPiece key,
     });
   }
 
-  if (ctx) {
+  if (ctx && ctx->numWaiters() != 0) {
     ctx->setItemHandle(std::move(handle));
     return ctx->numWaiters();
   }
 
   return 0;
+}
+
+template <typename CacheTrait>
+std::vector<std::thread::id> CacheAllocator<CacheTrait>::wakeUpWaitersLockedVec(Item* item, folly::StringPiece key,
+  WriteHandle&& handle) {
+  std::unique_ptr<MoveCtx> ctx;
+  auto shard = getShardForKey(key);
+  auto& movesMap = getMoveMapForShard(shard);
+  {
+    auto lock = getMoveLockForShard(shard);
+    movesMap.eraseInto(key, [&](auto &&key, auto &&value) {
+      ctx = std::move(value);
+    });
+  }
+
+  if (ctx) {
+    getMoveTrap(shard).values.try_emplace(key, item, item->toString());
+    ctx->setItemHandle(std::move(handle));
+    return ctx->getWaitersIds();
+  }
+
+  return {};
 }
 
 template <typename CacheTrait>
@@ -1571,13 +1594,19 @@ CacheAllocator<CacheTrait>::findEviction(TierId tid, PoolId pid, ClassId cid) {
   while ((config_.evictionSearchTries == 0 ||
           config_.evictionSearchTries > searchTries)) {
 
+    volatile int trace = 0;
+    std::vector<std::thread::id> woken_prev = {};
+
     Item* toRecycle = nullptr;
     Item* candidate = nullptr;
     typename NvmCacheT::PutToken token;
 
     mmContainer.withEvictionIterator([this, pid, cid, &candidate, &toRecycle,
                                       &searchTries, &mmContainer, &lastTier,
-                                      &token](auto&& itr) {
+                                      &token, &woken_prev, &trace](auto&& itr) {
+      woken_prev = {};
+      trace = 0;
+
       if (!itr) {
         ++searchTries;
         (*stats_.evictionAttempts)[pid][cid].inc();
@@ -1671,6 +1700,7 @@ CacheAllocator<CacheTrait>::findEviction(TierId tid, PoolId pid, ClassId cid) {
       auto ret = lastTier ? true : candidate->markForEvictionWhenMoving();
       XDCHECK(ret);
 
+      trace = 1;
       unlinkItemForEviction(*candidate);
       
       if (token.isValid() && shouldWriteToNvmCacheExclusive(*candidate)
@@ -1680,7 +1710,7 @@ CacheAllocator<CacheTrait>::findEviction(TierId tid, PoolId pid, ClassId cid) {
       // wake up any readers that wait for the move to complete
       // it's safe to do now, as we have the item marked exclusive and
       // no other reader can be added to the waiters list
-      wakeUpWaiters(*candidate, {});
+      woken_prev = wakeUpWaitersLockedVec(candidate, candidate->getKey(), {});
 
     } else {
       XDCHECK(!evictedToNext->isMarkedForEviction() && !evictedToNext->isMoving());
@@ -1688,10 +1718,35 @@ CacheAllocator<CacheTrait>::findEviction(TierId tid, PoolId pid, ClassId cid) {
       XDCHECK(!candidate->isAccessible());
       XDCHECK(candidate->getKey() == evictedToNext->getKey());
 
-      wakeUpWaiters(*candidate, std::move(evictedToNext));
+      trace = 1;
+      woken_prev = wakeUpWaitersLockedVec(candidate, candidate->getKey(), std::move(evictedToNext));
     }
 
     XDCHECK(!candidate->isMarkedForEviction() && !candidate->isMoving());
+
+    auto wakeDebug = [this](folly::StringPiece key) -> std::vector<std::thread::id> {
+        std::unique_ptr<MoveCtx> ctx;
+        auto shard = getShardForKey(key);
+        auto& movesMap = getMoveMapForShard(shard);
+        {
+          auto lock = getMoveLockForShard(shard);
+          movesMap.eraseInto(key, [&](auto &&key, auto &&value) {
+            ctx = std::move(value);
+          });
+        }
+
+        if (ctx && ctx->numWaiters() != 0) {
+          ctx->setItemHandle({});
+          return ctx->getWaitersIds();
+        }
+
+        return {};
+    };
+
+    auto woken = wakeDebug(candidate->getKey());
+    if (woken.size() != 0) {
+      throw std::runtime_error(std::to_string(trace));
+    }
 
     // recycle the item. it's safe to do so, even if toReleaseHandle was
     // NULL. If `ref` == 0 then it means that we are the last holder of
@@ -1712,6 +1767,13 @@ CacheAllocator<CacheTrait>::findEviction(TierId tid, PoolId pid, ClassId cid) {
     // recycle the candidate.
     auto ret = releaseBackToAllocator(*candidate, RemoveContext::kEviction,
                                       /* isNascent */ false, toRecycle);
+
+    woken = wakeDebug(candidate->getKey());
+    if (woken.size() != 0) {
+      throw std::runtime_error(std::to_string(trace));
+    }
+
+
     if (ret == ReleaseRes::kRecycled) {
       return toRecycle;
     }
