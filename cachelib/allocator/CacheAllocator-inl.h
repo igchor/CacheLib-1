@@ -677,6 +677,16 @@ void CacheAllocator<CacheTrait>::transferChainLocked(WriteHandle& parent,
     XDCHECK(curr->isInMMContainer());
     curr->changeKey(newParentPtr);
     curr = curr->getNext(compressor_);
+
+    if (curr->isMoving()) {
+      WriteHandle h;
+      if (!tryGetHandleWithWaitContextForMovingItem(*curr, h)) {
+        continue;
+      }
+
+      // synchronize with eviction
+      curr = h.get();
+    }
   }
 
   newParent->markHasChainedItem();
@@ -809,6 +819,16 @@ CacheAllocator<CacheTrait>::replaceChainedItemLocked(Item& oldItem,
     while (curr != nullptr && curr != &oldItem) {
       prev = curr;
       curr = curr->getNext(compressor_);
+
+      if (curr->isMoving()) {
+        WriteHandle h;
+        if (!tryGetHandleWithWaitContextForMovingItem(*curr, h)) {
+          continue;
+        }
+
+        // synchronize with eviction
+        curr = h.get();
+      }
     }
 
     XDCHECK(curr != nullptr);
@@ -1463,7 +1483,7 @@ bool CacheAllocator<CacheTrait>::moveRegularItem(Item& oldItem,
   }
   newItemHdl.unmarkNascent();
   return true;
-}
+} 
 
 template <typename CacheTrait>
 bool CacheAllocator<CacheTrait>::moveChainedItem(ChainedItem& oldItem,
@@ -1579,7 +1599,7 @@ CacheAllocator<CacheTrait>::findEviction(TierId tid, PoolId pid, ClassId cid) {
 
         auto* toRecycle_ = itr.get();
         auto* candidate_ =
-            toRecycle_->isChainedItem()
+            toRecycle_->isChainedItem() && lastTier
                 ? &toRecycle_->asChainedItem().getParentItem(compressor_)
                 : toRecycle_;
 
@@ -1655,8 +1675,22 @@ CacheAllocator<CacheTrait>::findEviction(TierId tid, PoolId pid, ClassId cid) {
       // as exclusive since we will not be moving the item to the next tier
       // but rather just evicting all together, no need to
       // markForEvictionWhenMoving
-      auto ret = lastTier ? true : candidate->markForEvictionWhenMoving();
-      XDCHECK(ret);
+
+      auto syncItem = candidate;
+      if (candidate->isChainedItem() && !lastTier) {
+        auto &parent = candidate->asChainedItem().getParentItem(compressor_);
+        if (!parent.markForEviction()) {
+          auto ret = candidate->unmarkMoving();
+          // TODO: cleanup
+
+          continue;
+        }
+
+        candidate = &parent;
+      } else {
+        auto ret = lastTier ? true : candidate->markForEvictionWhenMoving();
+        XDCHECK(ret);
+      }
 
       unlinkItemForEviction(*candidate);
       
@@ -1667,7 +1701,7 @@ CacheAllocator<CacheTrait>::findEviction(TierId tid, PoolId pid, ClassId cid) {
       // wake up any readers that wait for the move to complete
       // it's safe to do now, as we have the item marked exclusive and
       // no other reader can be added to the waiters list
-      wakeUpWaiters(*candidate, {});
+      wakeUpWaiters(*syncItem, {});
 
     } else {
       XDCHECK(!evictedToNext->isMarkedForEviction() && !evictedToNext->isMoving());
@@ -1689,6 +1723,7 @@ CacheAllocator<CacheTrait>::findEviction(TierId tid, PoolId pid, ClassId cid) {
     } else {
       (*stats_.regularItemEvictions)[tid][pid][cid].inc();
     }
+    // TODO: update stats if candidate is child item (and extend for moved items!)
 
     if (auto eventTracker = getEventTracker()) {
       eventTracker->record(AllocatorApiEvent::DRAM_EVICT, candidate->getKey(),
@@ -1761,7 +1796,24 @@ CacheAllocator<CacheTrait>::tryEvictToNextMemoryTier(
     TierId tid, PoolId pid, Item& item, bool fromBgThread) {
   XDCHECK(item.isMoving());
   XDCHECK(item.getRefCount() == 0);
-  if(item.hasChainedItem()) return WriteHandle{}; // TODO: We do not support ChainedItem yet
+  if(item.hasChainedItem()) {    
+    TierId nextTier = tid;
+    while (++nextTier < getNumTiers()) {
+      auto newItemHdl = allocateNewItemForOldItem(item); // TODO: actually allocate from the nextTierId... (extend allocateNewItemForOldItem to accept tid)
+
+      if (newItemHdl) {
+        XDCHECK_EQ(newItemHdl->getSize(), item.getSize());
+        if (!moveChainedItem(item, newItemHdl)) {
+            return WriteHandle{};
+        }
+        XDCHECK_EQ(newItemHdl->getKey(),item.getKey());
+        item.unmarkMoving();
+        return newItemHdl;
+      } else {
+        return WriteHandle{};
+      }
+    }
+  }
   if(item.isExpired()) {
     accessContainer_->remove(item);
     item.unmarkMoving();
