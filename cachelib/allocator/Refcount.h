@@ -374,6 +374,25 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
     return retValue & kRefMask;
   }
 
+  Value unmarkMovingAndIncRef() noexcept {
+    XDCHECK(isMoving());
+    auto predicate = [](const Value curValue) {
+      XDCHECK((curValue & kAccessRefMask) != 0);
+      return true;
+    };
+
+    Value retValue;
+    auto newValue = [&retValue](const Value curValue) {
+      retValue = curValue & ~getAdminRef<kExclusive>();
+      return retValue;
+    };
+
+    auto updated = atomicUpdateValue(predicate, newValue);
+    XDCHECK(updated);
+
+    return retValue & kRefMask;
+  }
+
   bool isMoving() const noexcept {
     auto raw = getRaw();
     return (raw & getAdminRef<kExclusive>()) && ((raw & kAccessRefMask) != 0);

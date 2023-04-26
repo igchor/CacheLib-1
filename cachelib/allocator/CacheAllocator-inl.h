@@ -593,11 +593,12 @@ CacheAllocator<CacheTrait>::popChainedItem(WriteHandle& parent) {
         "Invalid parent {}", parent ? parent->toString() : nullptr));
   }
 
-  WriteHandle head;
+  // obtain handle before locking to avoid deadlock
+  // TODO: is it fine to do it here or should we recheck under the lock?
+  WriteHandle head = findChainedItem(*parent);
   { // scope of chained item lock.
     auto l = chainedItemLocks_.lockExclusive(parent->getKey());
 
-    head = findChainedItem(*parent);
     if (head->asChainedItem().getNext(compressor_) != nullptr) {
       chainedItemAccessContainer_->insertOrReplace(
           *head->asChainedItem().getNext(compressor_));
@@ -610,6 +611,7 @@ CacheAllocator<CacheTrait>::popChainedItem(WriteHandle& parent) {
 
     invalidateNvm(*parent);
   }
+
   const auto res = removeFromMMContainer(*head);
   XDCHECK(res == true);
 
@@ -732,6 +734,10 @@ CacheAllocator<CacheTrait>::replaceChainedItem(Item& oldItem,
   if (!newItemHandle) {
     throw std::invalid_argument("Empty handle for newItem");
   }
+
+  // Acquire the handle before locking chainedItemLocks_ to avoid deadlock
+  auto oldItemHdl = acquire(oldItem);
+
   auto l = chainedItemLocks_.lockExclusive(parent.getKey());
 
   if (!oldItem.isChainedItem() || !newItemHandle->isChainedItem() ||
@@ -745,27 +751,21 @@ CacheAllocator<CacheTrait>::replaceChainedItem(Item& oldItem,
         oldItem.toString(), newItemHandle->toString(), parent.toString()));
   }
 
-  auto oldItemHdl =
-      replaceChainedItemLocked(oldItem, std::move(newItemHandle), parent);
+  replaceChainedItemLocked(std::move(oldItemHdl), std::move(newItemHandle), parent);
   invalidateNvm(parent);
   return oldItemHdl;
 }
 
 template <typename CacheTrait>
-typename CacheAllocator<CacheTrait>::WriteHandle
-CacheAllocator<CacheTrait>::replaceChainedItemLocked(Item& oldItem,
+void
+CacheAllocator<CacheTrait>::replaceChainedItemLocked(WriteHandle oldItemHdl,
                                                      WriteHandle newItemHdl,
                                                      const Item& parent) {
   XDCHECK(newItemHdl != nullptr);
-
-  // grab the handle to the old item so that we can return this. Also, we need
-  // to drop the refcount the parent holds on oldItem by manually calling
-  // decRef.  To do that safely we need to have a proper outstanding handle.
-  auto oldItemHdl = acquire(&oldItem);
+  auto &oldImte = *oldItemHdl;
 
   // Replace the old chained item with new item in the MMContainer before we
   // actually replace the old item in the chain
-
   if (!replaceChainedItemInMMContainer(oldItem, *newItemHdl)) {
     // This should never happen since we currently hold an valid
     // parent handle. None of its chained items can be removed
@@ -805,8 +805,6 @@ CacheAllocator<CacheTrait>::replaceChainedItemLocked(Item& oldItem,
   newItemHdl->asChainedItem().setNext(
       oldItem.asChainedItem().getNext(compressor_), compressor_);
   oldItem.asChainedItem().setNext(nullptr, compressor_);
-
-  return oldItemHdl;
 }
 
 template <typename CacheTrait>
@@ -1521,28 +1519,27 @@ CacheAllocator<CacheTrait>::findEviction(TierId tid, PoolId pid, ClassId cid) {
 
       if (candidate->isChainedItem()) {
         // For chained item only case (b) above can happen.
-        // replaceChaineItem will acquire handle to the old item
+        // replaceChainedItem / popChainedItem will acquire handle to the old item
         // before doing anything else
 
         auto child = candidate;
         candidate = &candidate->asChainedItem().getParentItem(compressor_);
 
+        // mark parent for eviction
         auto ret = candidate->markForEviction();
 
         if (!ret) {
-          child->unmarkMoving();
-
-          // TODO: we need to wakeupWaiters, but what should we pass here?
-          // We would need to have a way to atomically unmarkMoving and get a handle
-
-          // TODO: Add unmarkMovingAndIncRef()? OR GRAB A chainedItemLocks_ HERE?
+          child->unmarkMovingAndIncRef();
+          auto handle = WriteHandle{*child, *it};
+          wakeUpWaiters(*child, std::move(handle));
 
           continue;
         } else {
+          // unmark the child anyway to make sure releaseBackToAllocator will not skip it
+          child->unmarkMoving();
           // No need to wakeup anynone, if markForEviction succeede, there is no one waiting
           // TODO: add assert for that?
         }
-
       } else {
         auto ret = lastTier ? true : candidate->markForEvictionWhenMoving();
         XDCHECK(ret);

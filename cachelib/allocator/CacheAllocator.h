@@ -1659,7 +1659,7 @@ class CacheAllocator : public CacheBase {
   // @param parent   the parent for the chain
   //
   // @return handle to the oldItem
-  WriteHandle replaceChainedItemLocked(Item& oldItem,
+  void replaceChainedItemLocked(WriteHandle oldItem,
                                        WriteHandle newItemHdl,
                                        const Item& parent);
 
