@@ -1338,14 +1338,15 @@ bool CacheAllocator<CacheTrait>::moveChainedItem(ChainedItem& oldItem,
 
   auto& expectedParent = oldItem.getParentItem(compressor_);
   const auto parentKey = expectedParent.getKey();
-  auto l = chainedItemLocks_.lockExclusive(parentKey);
 
-  // Verify old item under the lock. This will synchronize with any potential eviction.
+  // Verify old item without the lock (to avoid deadlock). This will synchronize with any potential eviction.
   auto parentHandle =
       validateAndGetParentHandleForChainedMoveLocked(oldItem, parentKey);
   if (!parentHandle || &expectedParent != parentHandle.get()) {
     return false;
   }
+
+  auto l = chainedItemLocks_.lockExclusive(parentKey);
 
   // once we have the moving sync and valid parent for the old item, check if
   // the original allocation was made correctly. If not, we destroy the
@@ -1537,6 +1538,7 @@ CacheAllocator<CacheTrait>::findEviction(TierId tid, PoolId pid, ClassId cid) {
         } else {
           // unmark the child anyway to make sure releaseBackToAllocator will not skip it
           child->unmarkMoving();
+
           // No need to wakeup anynone, if markForEviction succeede, there is no one waiting
           // TODO: add assert for that?
         }
