@@ -1788,19 +1788,6 @@ class CacheAllocator : public CacheBase {
                            Item& item,
                            util::Throttler& throttler);
 
-  // Helper function to evict a normal item for slab release
-  //
-  // @return last handle for corresponding to item on success. empty handle on
-  // failure. caller can retry if needed.
-  WriteHandle evictNormalItemForSlabRelease(Item& item);
-
-  // Helper function to evict a child item for slab release
-  // As a side effect, the parent item is also evicted
-  //
-  // @return  last handle to the parent item of the child on success. empty
-  // handle on failure. caller can retry.
-  WriteHandle evictChainedItemForSlabRelease(ChainedItem& item);
-
   // Helper function to remove a item if expired.
   //
   // @return true if it item expire and removed successfully.
@@ -1922,16 +1909,12 @@ class CacheAllocator : public CacheBase {
   std::optional<bool> saveNvmCache();
   void saveRamCache();
 
-  static bool itemExclusivePredicate(const Item& item) {
-    return item.getRefCount() == 0;
+  static bool itemSlabMovePredicate(const Item& item) {
+    return item.isMoving() && item.getRefCount() == 0;
   }
 
   static bool itemExpiryPredicate(const Item& item) {
     return item.getRefCount() == 1 && item.isExpired();
-  }
-
-  static bool parentEvictForSlabReleasePredicate(const Item& item) {
-    return item.getRefCount() == 1 && !item.isMoving();
   }
 
   std::unique_ptr<Deserializer> createDeserializer();
