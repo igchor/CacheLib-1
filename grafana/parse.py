@@ -1,0 +1,45 @@
+#!/usr/bin/python3
+import sys
+import json
+import re
+import io
+
+def num(s):
+    try:
+        return int(s)
+    except ValueError:
+        return float(s)
+
+def main():
+    args = sys.argv[1:]
+    stats = args[0]
+
+    with open(stats) as file:
+       data = file.read()
+
+    blocks = data.split("\n\n")
+    output = []
+    blocks = blocks[-2:-1]
+
+    for block in blocks:
+        buf = io.StringIO(block)
+        lines  = buf.readlines()
+
+        lines = lines[:lines.index('== Hit Ratio Stats Since Last ==\n')+1]
+        for line in lines:
+            if 'ops completed' in line:
+                pass
+            elif ':' in line:
+                key, value, *_ = [x.rstrip(', \n').replace(" ","_").lower() for x in line.split(':') if not len(x) == 2]
+                key = re.sub('__+' , '_', key)
+                key = re.sub('[^\d\w]', '', key)
+
+                value = re.sub('[^0-9.]', '', value)
+                if value == '':
+                    continue
+                value = num(value)
+
+                print("{} {}".format(key, value))
+if __name__ == '__main__':
+    main()
+
