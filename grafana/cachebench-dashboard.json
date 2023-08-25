@@ -1,0 +1,884 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "datasource",
+          "uid": "grafana"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [],
+          "type": "dashboard"
+        },
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P71ECAB24A6108429"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 4,
+        "x": 0,
+        "y": 0
+      },
+      "id": 38,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "# Config 1\n\nSome description of the config",
+        "mode": "markdown"
+      },
+      "pluginVersion": "10.1.0",
+      "title": "CacheBench",
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P71ECAB24A6108429"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 4,
+        "x": 4,
+        "y": 0
+      },
+      "id": 39,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "# Config 2\n\nSome description of the config",
+        "mode": "markdown"
+      },
+      "pluginVersion": "10.1.0",
+      "title": "CacheBench",
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P71ECAB24A6108429"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 4,
+        "x": 8,
+        "y": 0
+      },
+      "id": 40,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "# Config 3\n\nSome description of the config",
+        "mode": "markdown"
+      },
+      "pluginVersion": "10.1.0",
+      "title": "CacheBench",
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P71ECAB24A6108429"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 11,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 37,
+      "options": {
+        "contentType": "application/json",
+        "icon": "cog",
+        "isAuth": false,
+        "method": "POST",
+        "orientation": "center",
+        "payload": "{\"workload_id\":\"1\"}",
+        "text": "Stop workloads",
+        "type": "header",
+        "url": "CONTROL_SERVER/stop_workload",
+        "variant": "primary"
+      },
+      "title": "CacheBench",
+      "type": "cloudspout-button-panel"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P71ECAB24A6108429"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 3,
+        "w": 4,
+        "x": 0,
+        "y": 8
+      },
+      "id": 34,
+      "options": {
+        "contentType": "application/json",
+        "icon": "cog",
+        "isAuth": false,
+        "method": "POST",
+        "orientation": "center",
+        "payload": "{\"workload_id\":\"1\"}",
+        "text": "Run workload",
+        "type": "header",
+        "url": "CONTROL_SERVER/run_workload",
+        "variant": "primary"
+      },
+      "title": "CacheBench",
+      "type": "cloudspout-button-panel"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P71ECAB24A6108429"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 3,
+        "w": 4,
+        "x": 4,
+        "y": 8
+      },
+      "id": 35,
+      "options": {
+        "contentType": "application/json",
+        "icon": "cog",
+        "isAuth": false,
+        "method": "POST",
+        "orientation": "center",
+        "payload": "{\"workload_id\":\"2\"}",
+        "text": "Run workload",
+        "type": "header",
+        "url": "CONTROL_SERVER/run_workload",
+        "variant": "primary"
+      },
+      "title": "CacheBench",
+      "type": "cloudspout-button-panel"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P71ECAB24A6108429"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 3,
+        "w": 4,
+        "x": 8,
+        "y": 8
+      },
+      "id": 36,
+      "options": {
+        "contentType": "application/json",
+        "icon": "cog",
+        "isAuth": false,
+        "method": "POST",
+        "orientation": "center",
+        "payload": "{\"workload_id\":\"3\"}",
+        "text": "Run workload",
+        "type": "header",
+        "url": "CONTROL_SERVER/run_workload",
+        "variant": "primary"
+      },
+      "title": "CacheBench",
+      "type": "cloudspout-button-panel"
+    },
+    {
+      "collapsed": false,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P71ECAB24A6108429"
+      },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 11
+      },
+      "id": 10,
+      "panels": [],
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P71ECAB24A6108429"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "Tier 0 Background Evictions",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P71ECAB24A6108429"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Tier0BackgroundTraversals/s",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "always",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "id": 6,
+      "interval": "1s",
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P71ECAB24A6108429"
+          },
+          "editorMode": "code",
+          "exemplar": true,
+          "expr": "irate(Tier0BackgroundTraversals[4s])",
+          "interval": "",
+          "legendFormat": "Tier0BackgroundTraversals/s - {{workload}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Tier0BackgroundTraversals/s",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P71ECAB24A6108429"
+      },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "id": 28,
+      "panels": [],
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P71ECAB24A6108429"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "Cachebench metrics (Workload ID: $cb_workload)",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P71ECAB24A6108429"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "always",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 21
+      },
+      "id": 29,
+      "interval": "1s",
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "repeat": "cb_metrics",
+      "repeatDirection": "v",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P71ECAB24A6108429"
+          },
+          "editorMode": "code",
+          "exemplar": true,
+          "expr": "$cb_metrics",
+          "interval": "",
+          "legendFormat": "{{workload}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "$cb_metrics",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P71ECAB24A6108429"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Percentage",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "always",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 41
+      },
+      "id": 30,
+      "interval": "1s",
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P71ECAB24A6108429"
+          },
+          "exemplar": true,
+          "expr": "irate(RAMEvictions[2s])",
+          "interval": "",
+          "legendFormat": "{{workload}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Ram Eviction Rate",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": [],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "P71ECAB24A6108429"
+        },
+        "definition": "get",
+        "hide": 0,
+        "includeAll": true,
+        "label": "CacheBench Workload ID",
+        "multi": true,
+        "name": "cb_workload",
+        "options": [],
+        "query": {
+          "query": "get",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "regex": "/.*workload=\"([^\"]*).*/",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": [
+            "CacheFindAPIlatencyp99",
+            "CacheAllocateAPIlatencyp99",
+            "get",
+            "set"
+          ],
+          "value": [
+            "CacheFindAPIlatencyp99",
+            "CacheAllocateAPIlatencyp99",
+            "get",
+            "set"
+          ]
+        },
+        "hide": 0,
+        "includeAll": true,
+        "label": "CacheBench Metrics",
+        "multi": true,
+        "name": "cb_metrics",
+        "options": [
+          {
+            "selected": false,
+            "text": "All",
+            "value": "$__all"
+          },
+          {
+            "selected": false,
+            "text": "ItemsinRAM",
+            "value": "ItemsinRAM"
+          },
+          {
+            "selected": false,
+            "text": "ItemsinNVM",
+            "value": "ItemsinNVM"
+          },
+          {
+            "selected": false,
+            "text": "AllocAttempts",
+            "value": "AllocAttempts"
+          },
+          {
+            "selected": false,
+            "text": "RAMEvictions",
+            "value": "RAMEvictions"
+          },
+          {
+            "selected": false,
+            "text": "Tier0BackgroundEvicteditems",
+            "value": "Tier0BackgroundEvicteditems"
+          },
+          {
+            "selected": false,
+            "text": "Tier0BackgroundEvicteditemsfromschedule",
+            "value": "Tier0BackgroundEvicteditemsfromschedule"
+          },
+          {
+            "selected": false,
+            "text": "Tier0BackgroundTraversals",
+            "value": "Tier0BackgroundTraversals"
+          },
+          {
+            "selected": false,
+            "text": "Tier0TotalClasses",
+            "value": "Tier0TotalClasses"
+          },
+          {
+            "selected": false,
+            "text": "Tier0BackgroundEvictedSize",
+            "value": "Tier0BackgroundEvictedSize"
+          },
+          {
+            "selected": false,
+            "text": "CacheGets",
+            "value": "CacheGets"
+          },
+          {
+            "selected": false,
+            "text": "HitRatio",
+            "value": "HitRatio"
+          },
+          {
+            "selected": false,
+            "text": "CacheFindAPIlatencyp50",
+            "value": "CacheFindAPIlatencyp50"
+          },
+          {
+            "selected": false,
+            "text": "CacheFindAPIlatencyp90",
+            "value": "CacheFindAPIlatencyp90"
+          },
+          {
+            "selected": true,
+            "text": "CacheFindAPIlatencyp99",
+            "value": "CacheFindAPIlatencyp99"
+          },
+          {
+            "selected": false,
+            "text": "CacheFindAPIlatencyp999",
+            "value": "CacheFindAPIlatencyp999"
+          },
+          {
+            "selected": false,
+            "text": "CacheFindAPIlatencyp9999",
+            "value": "CacheFindAPIlatencyp9999"
+          },
+          {
+            "selected": false,
+            "text": "CacheFindAPIlatencyp99999",
+            "value": "CacheFindAPIlatencyp99999"
+          },
+          {
+            "selected": false,
+            "text": "CacheFindAPIlatencyp999999",
+            "value": "CacheFindAPIlatencyp999999"
+          },
+          {
+            "selected": false,
+            "text": "CacheFindAPIlatencyp100",
+            "value": "CacheFindAPIlatencyp100"
+          },
+          {
+            "selected": false,
+            "text": "CacheAllocateAPIlatencyp50",
+            "value": "CacheAllocateAPIlatencyp50"
+          },
+          {
+            "selected": false,
+            "text": "CacheAllocateAPIlatencyp90",
+            "value": "CacheAllocateAPIlatencyp90"
+          },
+          {
+            "selected": true,
+            "text": "CacheAllocateAPIlatencyp99",
+            "value": "CacheAllocateAPIlatencyp99"
+          },
+          {
+            "selected": false,
+            "text": "CacheAllocateAPIlatencyp999",
+            "value": "CacheAllocateAPIlatencyp999"
+          },
+          {
+            "selected": false,
+            "text": "CacheAllocateAPIlatencyp9999",
+            "value": "CacheAllocateAPIlatencyp9999"
+          },
+          {
+            "selected": false,
+            "text": "CacheAllocateAPIlatencyp99999",
+            "value": "CacheAllocateAPIlatencyp99999"
+          },
+          {
+            "selected": false,
+            "text": "CacheAllocateAPIlatencyp999999",
+            "value": "CacheAllocateAPIlatencyp999999"
+          },
+          {
+            "selected": false,
+            "text": "CacheAllocateAPIlatencyp100",
+            "value": "CacheAllocateAPIlatencyp100"
+          },
+          {
+            "selected": false,
+            "text": "NVMGets",
+            "value": "NVMGets"
+          },
+          {
+            "selected": false,
+            "text": "NVMPuts",
+            "value": "NVMPuts"
+          },
+          {
+            "selected": false,
+            "text": "NVMEvicts",
+            "value": "NVMEvicts"
+          },
+          {
+            "selected": false,
+            "text": "NVMDeletes",
+            "value": "NVMDeletes"
+          },
+          {
+            "selected": false,
+            "text": "CacheGets_HRStats",
+            "value": "CacheGets_HRStats"
+          },
+          {
+            "selected": false,
+            "text": "HitRatio_HRStats",
+            "value": "HitRatio_HRStats"
+          },
+          {
+            "selected": false,
+            "text": "RAMHitRatio",
+            "value": "RAMHitRatio"
+          },
+          {
+            "selected": false,
+            "text": "NVMHitRatio",
+            "value": "NVMHitRatio"
+          },
+          {
+            "selected": false,
+            "text": "TotalOps",
+            "value": "TotalOps"
+          },
+          {
+            "selected": false,
+            "text": "Totalsets",
+            "value": "Totalsets"
+          },
+          {
+            "selected": true,
+            "text": "get",
+            "value": "get"
+          },
+          {
+            "selected": true,
+            "text": "set",
+            "value": "set"
+          },
+          {
+            "selected": false,
+            "text": "del",
+            "value": "del"
+          }
+        ],
+        "query": "ItemsinRAM,ItemsinNVM,AllocAttempts,RAMEvictions,Tier0BackgroundEvicteditems,Tier0BackgroundEvicteditemsfromschedule,Tier0BackgroundTraversals,Tier0TotalClasses,Tier0BackgroundEvictedSize,CacheGets,HitRatio,CacheFindAPIlatencyp50,CacheFindAPIlatencyp90,CacheFindAPIlatencyp99,CacheFindAPIlatencyp999,CacheFindAPIlatencyp9999,CacheFindAPIlatencyp99999,CacheFindAPIlatencyp999999,CacheFindAPIlatencyp100,CacheAllocateAPIlatencyp50,CacheAllocateAPIlatencyp90,CacheAllocateAPIlatencyp99,CacheAllocateAPIlatencyp999,CacheAllocateAPIlatencyp9999,CacheAllocateAPIlatencyp99999,CacheAllocateAPIlatencyp999999,CacheAllocateAPIlatencyp100,NVMGets,NVMPuts,NVMEvicts,NVMDeletes,CacheGets_HRStats,HitRatio_HRStats,RAMHitRatio,NVMHitRatio,TotalOps,Totalsets,get,set,del",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {
+          "isNone": true,
+          "selected": false,
+          "text": "None",
+          "value": ""
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "P71ECAB24A6108429"
+        },
+        "definition": "pool_total_size",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Host IP",
+        "multi": false,
+        "name": "host_ip",
+        "options": [],
+        "query": {
+          "query": "pool_total_size",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "regex": "/.*instance=\\\"([^\\\"]*).*/",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-5m",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "1s",
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "1d"
+    ]
+  },
+  "timezone": "",
+  "title": "CacheBench Dashboard",
+  "uid": "EjLUcvQ7z",
+  "version": 6,
+  "weekStart": ""
+}

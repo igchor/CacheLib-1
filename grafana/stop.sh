@@ -1,5 +1,5 @@
 
-for c in grafana pushgateway prometheus; do
+for c in grafana pushgateway prometheus cachebench; do
 
 	id=`docker ps -a -q --filter="name=$c" --format="{{.ID}}"`
 	if [ ! -z "$id" ]

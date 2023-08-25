@@ -3,6 +3,7 @@ import sys
 import json
 import re
 import io
+import os
 
 def num(s):
     try:
@@ -30,7 +31,7 @@ def main():
             if 'ops completed' in line:
                 pass
             elif ':' in line:
-                key, value, *_ = [x.rstrip(', \n').replace(" ","_").lower() for x in line.split(':') if not len(x) == 2]
+                key, value, *_ = [x.rstrip(', \n').replace(" ","") for x in line.split(':') if not len(x) == 2]
                 key = re.sub('__+' , '_', key)
                 key = re.sub('[^\d\w]', '', key)
 
@@ -39,7 +40,7 @@ def main():
                     continue
                 value = num(value)
 
-                print("{} {}".format(key, value))
+                print("{}{} {}".format(key, "{workload=\"" + os.path.basename(stats) + "\"}", value))
 if __name__ == '__main__':
     main()
 
