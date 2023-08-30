@@ -29,7 +29,9 @@ docker run --name pushgateway --restart=unless-stopped -d -p $PUSHGATEWAY_PORT:9
 echo Start browser at http://localhost:$PUSHGATEWAY_PORT/ and see the options.
 
 unzip plugin.zip
+unzip manipulation.zip
 mv cloudspout-button-panel grafana_volume/plugins/cloudspout-button-panel
+mv volkovlabs-form-panel grafana_volume/plugins/volkovlabs-form-panel
 
 echo Starting prometheus
 docker run --name prometheus -d -p 9090:9090 -v $PWD/prometheus.yml:/etc/prometheus/prometheus.yml -v $PWD/prometheus_volume:/prometheus prom/prometheus
@@ -38,7 +40,9 @@ docker run -d --link=prometheus --name=grafana -p $GRAFANA_PORT:3000 -v $PWD/gra
 
 echo Start browser at http://localhost:$GRAFANA_PORT/ and login with admin user, password admin
 
-#kill $(pidof cachebench_monitor)
+/root/pcm/build/bin/pcm-sensor-server -p $PCM_SERVER_PORT &
+
+pkill -f cachebench_monitor.sh
 sh cachebench_monitor.sh &
 python3 server.py -p $CONTROL_PORT -o "http://$GRAFNA_SERVER_IP"
 

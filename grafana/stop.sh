@@ -9,3 +9,5 @@ for c in grafana pushgateway prometheus cachebench; do
 	fi
 done
 
+pkill -f cachebench_monitor.sh
+pkill -f pcm-sensor-server

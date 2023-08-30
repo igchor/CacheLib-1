@@ -19,7 +19,18 @@ class RunWorkload:
     def on_post(self, req, resp):
         print(req)
         payload = json.load(req.bounded_stream)
-        subprocess.Popen(["sh", "./run_docker.sh", payload["workload_id"]])
+        if "workload_id" in payload:
+            config = ""
+            if payload['workload_id'] == 1:
+                config = "/opt/test_configs/small_moving_bg.json"
+            else:
+                print("ERROR")
+            subprocess.Popen(["sh", "./run_docker.sh", config])
+        else:
+            print(payload['config'])
+            with open('../build/config.json', 'w') as f:
+                f.write(payload['config'])
+            subprocess.Popen(["sh", "./run_docker.sh", "/opt/workspace/build/config.json"])
 
 
 class StopWorkload:

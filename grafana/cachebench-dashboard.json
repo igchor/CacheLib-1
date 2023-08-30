@@ -32,11 +32,121 @@
         "type": "prometheus",
         "uid": "P71ECAB24A6108429"
       },
+      "description": "",
+      "gridPos": {
+        "h": 11,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 44,
+      "options": {
+        "buttonGroup": {
+          "orientation": "center",
+          "size": "md"
+        },
+        "elements": [
+          {
+            "height": 300,
+            "id": "config",
+            "labelWidth": 10,
+            "language": "json",
+            "section": "",
+            "showIf": "",
+            "title": "config",
+            "tooltip": "",
+            "type": "code",
+            "uid": "b8fcb092-e1c5-4ee3-8019-e0417de6329a",
+            "unit": "",
+            "value": "{\r\n \"cache_config\": {\r\n  \"cacheSizeMB\": 512,\r\n  \"poolRebalanceIntervalSec\": 1,\r\n  \"moveOnSlabRelease\": false,\r\n  \"numPools\": 2,\r\n  \"poolSizes\": [\r\n   0.3,\r\n   0.7\r\n  ]\r\n },\r\n \"test_config\": {\r\n  \"numOps\": 100000,\r\n  \"numThreads\": 32,\r\n  \"numKeys\": 1000000,\r\n  \"keySizeRange\": [\r\n   1,\r\n   8,\r\n   64\r\n  ],\r\n  \"keySizeRangeProbability\": [\r\n   0.3,\r\n   0.7\r\n  ],\r\n  \"valSizeRange\": [\r\n   1,\r\n   32,\r\n   10240,\r\n   409200\r\n  ],\r\n  \"valSizeRangeProbability\": [\r\n   0.1,\r\n   0.2,\r\n   0.7\r\n  ],\r\n  \"getRatio\": 0.15,\r\n  \"setRatio\": 0.8,\r\n  \"delRatio\": 0.05,\r\n  \"keyPoolDistribution\": [\r\n   0.4,\r\n   0.6\r\n  ],\r\n  \"opPoolDistribution\": [\r\n   0.5,\r\n   0.5\r\n  ]\r\n }\r\n}"
+          }
+        ],
+        "initial": {
+          "code": "",
+          "contentType": "application/json",
+          "getPayload": "return {\n  rawSql: '',\n  format: 'table',\n}",
+          "highlight": false,
+          "highlightColor": "red",
+          "method": "-"
+        },
+        "layout": {
+          "orientation": "horizontal",
+          "padding": 10,
+          "variant": "single"
+        },
+        "reset": {
+          "backgroundColor": "purple",
+          "foregroundColor": "yellow",
+          "icon": "process",
+          "text": "Reset",
+          "variant": "destructive"
+        },
+        "resetAction": {
+          "code": "default_value = {\r\n  \"cache_config\": {\r\n    \"cacheSizeMB\": 512,\r\n    \"poolRebalanceIntervalSec\": 1,\r\n    \"moveOnSlabRelease\": false,\r\n\r\n    \"numPools\": 2,\r\n    \"poolSizes\": [0.3, 0.7]\r\n  },\r\n  \"test_config\": {\r\n\r\n    \"numOps\": 100000,\r\n    \"numThreads\": 32,\r\n    \"numKeys\": 1000000,\r\n\r\n    \"keySizeRange\": [1, 8, 64],\r\n    \"keySizeRangeProbability\": [0.3, 0.7],\r\n\r\n    \"valSizeRange\": [1, 32, 10240, 409200],\r\n    \"valSizeRangeProbability\": [0.1, 0.2, 0.7],\r\n\r\n    \"getRatio\": 0.15,\r\n    \"setRatio\": 0.8,\r\n    \"delRatio\": 0.05,\r\n    \"keyPoolDistribution\": [0.4, 0.6],\r\n    \"opPoolDistribution\": [0.5, 0.5]\r\n  }\r\n};\r\n\r\nonChange(elements.map((element) => {\r\n  return element.id === 'config' ? { ...element, value: JSON.stringify(default_value, null, \" \") } : element\r\n}));",
+          "mode": "custom"
+        },
+        "saveDefault": {
+          "icon": "save",
+          "text": "Save Default",
+          "variant": "hidden"
+        },
+        "submit": {
+          "backgroundColor": "purple",
+          "foregroundColor": "yellow",
+          "icon": "cloud-upload",
+          "text": "Submit",
+          "variant": "primary"
+        },
+        "update": {
+          "code": "/**\n * Set body\n */\n\npayload = {};\nelements.forEach((element) => {\n  payload[element.id] = element.value;\n});\nconsole.log(payload);\n\n/**\n * Set URL\n */\nconst url = `CONTROL_SERVER/run_workload`;\n\n/**\n * Fetch\n */\nconst resp = fetch(url, {\n  method: \"POST\",\n  headers: {\n    \"Content-Type\": \"application/json\"\n  },\n  body: JSON.stringify(payload),\n})\n  .catch((error) => {\n    console.error(error);\n  })\n  .then((resp) => {\n    console.log(resp);\n  });",
+          "confirm": false,
+          "contentType": "application/json",
+          "getPayload": "const payload = {};\n\nelements.forEach((element) => {\n  if (!element.value) {\n    return;\n  }\n\n  payload[element.id] = element.value;\n})\n\nreturn payload;\n\n/**\n * Data Source payload\n */ \nreturn {\n  rawSql: '',\n  format: 'table',\n};",
+          "method": "-",
+          "payloadMode": "all"
+        }
+      },
+      "title": "Panel Title",
+      "type": "volkovlabs-form-panel"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P71ECAB24A6108429"
+      },
+      "description": "",
+      "gridPos": {
+        "h": 11,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 37,
+      "options": {
+        "contentType": "application/json",
+        "icon": "cog",
+        "isAuth": false,
+        "method": "POST",
+        "orientation": "center",
+        "payload": "",
+        "text": "Stop workloads",
+        "type": "header",
+        "url": "CONTROL_SERVER/stop_workload",
+        "variant": "primary"
+      },
+      "title": "CacheBench",
+      "type": "cloudspout-button-panel"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P71ECAB24A6108429"
+      },
       "gridPos": {
         "h": 8,
         "w": 4,
         "x": 0,
-        "y": 0
+        "y": 11
       },
       "id": 38,
       "options": {
@@ -61,7 +171,7 @@
         "h": 8,
         "w": 4,
         "x": 4,
-        "y": 0
+        "y": 11
       },
       "id": 39,
       "options": {
@@ -86,7 +196,7 @@
         "h": 8,
         "w": 4,
         "x": 8,
-        "y": 0
+        "y": 11
       },
       "id": 40,
       "options": {
@@ -109,38 +219,10 @@
       },
       "description": "",
       "gridPos": {
-        "h": 11,
-        "w": 12,
-        "x": 12,
-        "y": 0
-      },
-      "id": 37,
-      "options": {
-        "contentType": "application/json",
-        "icon": "cog",
-        "isAuth": false,
-        "method": "POST",
-        "orientation": "center",
-        "payload": "{\"workload_id\":\"1\"}",
-        "text": "Stop workloads",
-        "type": "header",
-        "url": "CONTROL_SERVER/stop_workload",
-        "variant": "primary"
-      },
-      "title": "CacheBench",
-      "type": "cloudspout-button-panel"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "P71ECAB24A6108429"
-      },
-      "description": "",
-      "gridPos": {
         "h": 3,
         "w": 4,
         "x": 0,
-        "y": 8
+        "y": 19
       },
       "id": 34,
       "options": {
@@ -149,7 +231,7 @@
         "isAuth": false,
         "method": "POST",
         "orientation": "center",
-        "payload": "{\"workload_id\":\"1\"}",
+        "payload": "{\"workload_id\":1}",
         "text": "Run workload",
         "type": "header",
         "url": "CONTROL_SERVER/run_workload",
@@ -168,7 +250,7 @@
         "h": 3,
         "w": 4,
         "x": 4,
-        "y": 8
+        "y": 19
       },
       "id": 35,
       "options": {
@@ -177,7 +259,7 @@
         "isAuth": false,
         "method": "POST",
         "orientation": "center",
-        "payload": "{\"workload_id\":\"2\"}",
+        "payload": "{\"workload_id\":2}",
         "text": "Run workload",
         "type": "header",
         "url": "CONTROL_SERVER/run_workload",
@@ -196,7 +278,7 @@
         "h": 3,
         "w": 4,
         "x": 8,
-        "y": 8
+        "y": 19
       },
       "id": 36,
       "options": {
@@ -205,7 +287,7 @@
         "isAuth": false,
         "method": "POST",
         "orientation": "center",
-        "payload": "{\"workload_id\":\"3\"}",
+        "payload": "{\"workload_id\":3}",
         "text": "Run workload",
         "type": "header",
         "url": "CONTROL_SERVER/run_workload",
@@ -224,7 +306,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 11
+        "y": 22
       },
       "id": 10,
       "panels": [],
@@ -303,7 +385,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 12
+        "y": 23
       },
       "id": 6,
       "interval": "1s",
@@ -347,7 +429,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 20
+        "y": 31
       },
       "id": 28,
       "panels": [],
@@ -426,7 +508,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 21
+        "y": 32
       },
       "id": 29,
       "interval": "1s",
@@ -524,7 +606,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 41
+        "y": 72
       },
       "id": 30,
       "interval": "1s",
@@ -830,7 +912,7 @@
       {
         "current": {
           "isNone": true,
-          "selected": false,
+          "selected": true,
           "text": "None",
           "value": ""
         },
@@ -879,6 +961,6 @@
   "timezone": "",
   "title": "CacheBench Dashboard",
   "uid": "EjLUcvQ7z",
-  "version": 6,
+  "version": 1,
   "weekStart": ""
 }
