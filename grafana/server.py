@@ -28,7 +28,7 @@ class RunWorkload:
             subprocess.Popen(["sh", "./run_docker.sh", config])
         else:
             print(payload['config'])
-            with open('../build/config.json', 'w') as f:
+            with open('../build/config.json', 'w+') as f:
                 f.write(payload['config'])
             subprocess.Popen(["sh", "./run_docker.sh", "/opt/workspace/build/config.json"])
 
