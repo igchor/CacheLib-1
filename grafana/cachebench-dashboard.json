@@ -297,7 +297,7 @@
       "type": "cloudspout-button-panel"
     },
     {
-      "collapsed": false,
+      "collapsed": true,
       "datasource": {
         "type": "prometheus",
         "uid": "P71ECAB24A6108429"
@@ -309,7 +309,105 @@
         "y": 22
       },
       "id": 10,
-      "panels": [],
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P71ECAB24A6108429"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "Tier0BackgroundTraversals/s",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "always",
+                "spanNulls": true,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 23
+          },
+          "id": 6,
+          "interval": "1s",
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "P71ECAB24A6108429"
+              },
+              "editorMode": "code",
+              "exemplar": true,
+              "expr": "irate(Tier0BackgroundTraversals[4s])",
+              "interval": "",
+              "legendFormat": "Tier0BackgroundTraversals/s - {{workload}}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Tier0BackgroundTraversals/s",
+          "type": "timeseries"
+        }
+      ],
       "targets": [
         {
           "datasource": {
@@ -323,103 +421,6 @@
       "type": "row"
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "P71ECAB24A6108429"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Tier0BackgroundTraversals/s",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "always",
-            "spanNulls": true,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 23
-      },
-      "id": 6,
-      "interval": "1s",
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P71ECAB24A6108429"
-          },
-          "editorMode": "code",
-          "exemplar": true,
-          "expr": "irate(Tier0BackgroundTraversals[4s])",
-          "interval": "",
-          "legendFormat": "Tier0BackgroundTraversals/s - {{workload}}",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Tier0BackgroundTraversals/s",
-      "type": "timeseries"
-    },
-    {
       "collapsed": false,
       "datasource": {
         "type": "prometheus",
@@ -429,7 +430,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 31
+        "y": 23
       },
       "id": 28,
       "panels": [],
@@ -508,7 +509,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 32
+        "y": 34
       },
       "id": 29,
       "interval": "1s",
@@ -543,100 +544,6 @@
       ],
       "title": "$cb_metrics",
       "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "P71ECAB24A6108429"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Percentage",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "always",
-            "spanNulls": true,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 72
-      },
-      "id": 30,
-      "interval": "1s",
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P71ECAB24A6108429"
-          },
-          "exemplar": true,
-          "expr": "irate(RAMEvictions[2s])",
-          "interval": "",
-          "legendFormat": "{{workload}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Ram Eviction Rate",
-      "type": "timeseries"
     }
   ],
   "refresh": "5s",
@@ -647,7 +554,7 @@
     "list": [
       {
         "current": {
-          "selected": true,
+          "selected": false,
           "text": [
             "All"
           ],
@@ -680,16 +587,24 @@
         "current": {
           "selected": true,
           "text": [
-            "CacheFindAPIlatencyp99",
-            "CacheAllocateAPIlatencyp99",
-            "get",
-            "set"
+            "CacheFindAPIlatencyp50 [ns]",
+            "CacheFindAPIlatencyp99 [ns]",
+            "CacheAllocateAPIlatencyp50 [ns]",
+            "CacheAllocateAPIlatencyp99 [ns]",
+            "get [items/s]",
+            "set [items/s]",
+            "RAMHitRatio [%]",
+            "CXLHitRatio [%]"
           ],
           "value": [
+            "CacheFindAPIlatencyp50",
             "CacheFindAPIlatencyp99",
+            "CacheAllocateAPIlatencyp50",
             "CacheAllocateAPIlatencyp99",
             "get",
-            "set"
+            "set",
+            "Tier0HitRatio",
+            "Tier1HitRatio"
           ]
         },
         "hide": 0,
@@ -721,7 +636,7 @@
           {
             "selected": false,
             "text": "RAMEvictions",
-            "value": "RAMEvictions"
+            "value": "Tier0Evictions"
           },
           {
             "selected": false,
@@ -759,83 +674,83 @@
             "value": "HitRatio"
           },
           {
-            "selected": false,
-            "text": "CacheFindAPIlatencyp50",
+            "selected": true,
+            "text": "CacheFindAPIlatencyp50 [ns]",
             "value": "CacheFindAPIlatencyp50"
           },
           {
             "selected": false,
-            "text": "CacheFindAPIlatencyp90",
+            "text": "CacheFindAPIlatencyp90 [ns]",
             "value": "CacheFindAPIlatencyp90"
           },
           {
             "selected": true,
-            "text": "CacheFindAPIlatencyp99",
+            "text": "CacheFindAPIlatencyp99 [ns]",
             "value": "CacheFindAPIlatencyp99"
           },
           {
             "selected": false,
-            "text": "CacheFindAPIlatencyp999",
+            "text": "CacheFindAPIlatencyp999 [ns]",
             "value": "CacheFindAPIlatencyp999"
           },
           {
             "selected": false,
-            "text": "CacheFindAPIlatencyp9999",
+            "text": "CacheFindAPIlatencyp9999 [ns]",
             "value": "CacheFindAPIlatencyp9999"
           },
           {
             "selected": false,
-            "text": "CacheFindAPIlatencyp99999",
+            "text": "CacheFindAPIlatencyp99999 [ns]",
             "value": "CacheFindAPIlatencyp99999"
           },
           {
             "selected": false,
-            "text": "CacheFindAPIlatencyp999999",
+            "text": "CacheFindAPIlatencyp999999 [ns]",
             "value": "CacheFindAPIlatencyp999999"
           },
           {
             "selected": false,
-            "text": "CacheFindAPIlatencyp100",
+            "text": "CacheFindAPIlatencyp100 [ns]",
             "value": "CacheFindAPIlatencyp100"
           },
           {
-            "selected": false,
-            "text": "CacheAllocateAPIlatencyp50",
+            "selected": true,
+            "text": "CacheAllocateAPIlatencyp50 [ns]",
             "value": "CacheAllocateAPIlatencyp50"
           },
           {
             "selected": false,
-            "text": "CacheAllocateAPIlatencyp90",
+            "text": "CacheAllocateAPIlatencyp90 [ns]",
             "value": "CacheAllocateAPIlatencyp90"
           },
           {
             "selected": true,
-            "text": "CacheAllocateAPIlatencyp99",
+            "text": "CacheAllocateAPIlatencyp99 [ns]",
             "value": "CacheAllocateAPIlatencyp99"
           },
           {
             "selected": false,
-            "text": "CacheAllocateAPIlatencyp999",
+            "text": "CacheAllocateAPIlatencyp999 [ns]",
             "value": "CacheAllocateAPIlatencyp999"
           },
           {
             "selected": false,
-            "text": "CacheAllocateAPIlatencyp9999",
+            "text": "CacheAllocateAPIlatencyp9999 [ns]",
             "value": "CacheAllocateAPIlatencyp9999"
           },
           {
             "selected": false,
-            "text": "CacheAllocateAPIlatencyp99999",
+            "text": "CacheAllocateAPIlatencyp99999 [ns]",
             "value": "CacheAllocateAPIlatencyp99999"
           },
           {
             "selected": false,
-            "text": "CacheAllocateAPIlatencyp999999",
+            "text": "CacheAllocateAPIlatencyp999999 [ns]",
             "value": "CacheAllocateAPIlatencyp999999"
           },
           {
             "selected": false,
-            "text": "CacheAllocateAPIlatencyp100",
+            "text": "CacheAllocateAPIlatencyp100 [ns]",
             "value": "CacheAllocateAPIlatencyp100"
           },
           {
@@ -869,13 +784,18 @@
             "value": "HitRatio_HRStats"
           },
           {
-            "selected": false,
-            "text": "RAMHitRatio",
-            "value": "RAMHitRatio"
+            "selected": true,
+            "text": "RAMHitRatio [%]",
+            "value": "Tier0HitRatio"
+          },
+          {
+            "selected": true,
+            "text": "CXLHitRatio [%]",
+            "value": "Tier1HitRatio"
           },
           {
             "selected": false,
-            "text": "NVMHitRatio",
+            "text": "NVMHitRatio [%]",
             "value": "NVMHitRatio"
           },
           {
@@ -890,17 +810,17 @@
           },
           {
             "selected": true,
-            "text": "get",
+            "text": "gets/s",
             "value": "get"
           },
           {
             "selected": true,
-            "text": "set",
+            "text": "sets/s",
             "value": "set"
           },
           {
             "selected": false,
-            "text": "del",
+            "text": "dels/s",
             "value": "del"
           }
         ],
@@ -911,8 +831,7 @@
       },
       {
         "current": {
-          "isNone": true,
-          "selected": true,
+          "selected": false,
           "text": "None",
           "value": ""
         },

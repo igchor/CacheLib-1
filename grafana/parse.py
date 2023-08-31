@@ -26,7 +26,8 @@ def main():
         buf = io.StringIO(block)
         lines  = buf.readlines()
 
-        lines = lines[:lines.index('== Hit Ratio Stats Since Last ==\n')+1]
+        del lines[lines.index('== Hit Ratio Stats Since Last ==\n'):lines.index('== Throughput Stats ==\n')]
+
         for line in lines:
             if 'ops completed' in line:
                 pass
