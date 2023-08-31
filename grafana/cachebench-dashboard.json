@@ -155,7 +155,7 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "# Config 1\n\nSome description of the config",
+        "content": "# Config 1\n\nsmall_moving_bg.json",
         "mode": "markdown"
       },
       "pluginVersion": "10.1.0",
@@ -180,7 +180,7 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "# Config 2\n\nSome description of the config",
+        "content": "# Config 2\n\nsimple_test.json",
         "mode": "markdown"
       },
       "pluginVersion": "10.1.0",
@@ -205,7 +205,7 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "# Config 3\n\nSome description of the config",
+        "content": "# Config 3\n\nsimple_tiers_test.json",
         "mode": "markdown"
       },
       "pluginVersion": "10.1.0",

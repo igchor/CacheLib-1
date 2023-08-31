@@ -23,8 +23,10 @@ class RunWorkload:
             config = ""
             if payload['workload_id'] == 1:
                 config = "/opt/test_configs/small_moving_bg.json"
+            elif payload['workload_id'] == 1:
+                config = "/opt/test_configs/simple_test.json"
             else:
-                print("ERROR")
+                config = "/opt/test_configs/simple_tiers_test.json"
             subprocess.Popen(["sh", "./run_docker.sh", config])
         else:
             print(payload['config'])
