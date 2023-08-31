@@ -45,5 +45,7 @@ curl -o grafana_volume/dashboards/pcm-dashboard.json $PCM_SENSOR_SERVER_IP/dashb
 
 pkill -f cachebench_monitor.sh
 sh cachebench_monitor.sh &
+
+mkdir -p ../build
 python3 server.py -p $CONTROL_PORT -o "http://$GRAFNA_SERVER_IP"
 
