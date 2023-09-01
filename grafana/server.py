@@ -5,6 +5,7 @@ import falcon
 from falcon.http_status import HTTPStatus
 import argparse
 import subprocess
+from datetime import datetime
 
 import atexit
 import os
@@ -18,6 +19,7 @@ class RunWorkload:
 
     def on_post(self, req, resp):
         print(req)
+        time = "{}".format(datetime.now().replace(microsecond=0)).replace(" ","_")
         payload = json.load(req.bounded_stream)
         if "workload_id" in payload:
             config = ""
@@ -27,12 +29,12 @@ class RunWorkload:
                 config = "/opt/test_configs/simple_test.json"
             else:
                 config = "/opt/test_configs/simple_tiers_test.json"
-            subprocess.Popen(["sh", "./run_docker.sh", config])
+            subprocess.Popen(["sh", "./run_docker.sh", config, time])
         else:
             print(payload['config'])
             with open('../build/config.json', 'w+') as f:
                 f.write(payload['config'])
-            subprocess.Popen(["sh", "./run_docker.sh", "/opt/workspace/build/config.json"])
+            subprocess.Popen(["sh", "./run_docker.sh", "/opt/workspace/build/config.json", time])
 
 
 class StopWorkload:

@@ -8,7 +8,7 @@ cmake ../cachelib -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt
 
 make install -j
 
-file="$(cat /etc/hostname)"
+file="$2"
 echo "Writing to $file"
 
 mkdir -p /opt/workspace/stats/

@@ -8,12 +8,14 @@ echo "Using the '$host_public_ip' IP as the IP for 'pushgateway'"
 while true
 do
    curl --noproxy '*' -s -X PUT "http://$PUSHGATEWAY_SERVER_IP/api/v1/admin/wipe"
-   id=`docker ps --filter="name=cachebench" --format="{{.ID}}"`
-   if [ ! -z "$id" ]
-   then
-      file="$PWD/../stats/$id"
-      python parse.py $file | \
-               curl --noproxy '*' -s --data-binary @- "http://$PUSHGATEWAY_SERVER_IP/metrics/job/pushgateway/instance/$host_public_ip:$PUSHGATEWAY_PORT"
-   fi
-   sleep 1 
+   ls $PWD/../stats/ | while read -r filename
+   do
+      if [ ! -z "$filename" ]
+      then
+         file="$PWD/../stats/$filename"
+         python parse.py $file | \
+                  curl --noproxy '*' -s --data-binary @- "http://$PUSHGATEWAY_SERVER_IP/metrics/job/pushgateway/instance/$host_public_ip:$PUSHGATEWAY_PORT" &
+      fi
+   done
+   sleep 1
 done

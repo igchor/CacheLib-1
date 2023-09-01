@@ -41,7 +41,10 @@ def main():
                     continue
                 value = num(value)
 
-                print("{}{} {}".format(key, "{workload=\"" + os.path.basename(stats) + "\"}", value))
+                filename = os.path.basename(stats)
+                workload_id = filename[:filename.index("#")]
+                run_id = filename[filename.index("#") + 1:]
+                print("{}{} {}".format(key, "{workload=\"" + workload_id + "\",run=\"" + run_id + "\"}", value))
 if __name__ == '__main__':
     main()
 
