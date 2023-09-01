@@ -47,5 +47,7 @@ pkill -f cachebench_monitor.sh
 sh cachebench_monitor.sh &
 
 mkdir -p ../build
+docker run --privileged --name=cachebench_build -v $PWD/..:/opt/workspace:z -w /opt/workspace/ -e http_proxy=$http_proxy -e https_proxy=$https_proxy -it ghcr.io/pmem/cachelib:centos-8streams-devel sh /opt/workspace/grafana/build.sh
+
 python3 server.py -p $CONTROL_PORT -o "http://$GRAFNA_SERVER_IP"
 
