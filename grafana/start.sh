@@ -14,12 +14,14 @@ mkdir -p provisioning/datasources
 cp automatic_prometheus.yml provisioning/datasources/automatic.yml
 
 pkill -f pcm-sensor-server
-/root/pcm/build/bin/pcm-sensor-server -p $PCM_SERVER_PORT &
+$PCM_SERVER_PATH -p $PCM_SERVER_PORT &
+
+sleep 10
 
 echo "creating prometheus.yml for $PCM_SENSOR_SERVER_IP $PUSHGATEWAY_SERVER_IP";
 sed "s#PCMSENSORSERVER#$PCM_SENSOR_SERVER_IP#g" prometheus.yml.template > prometheus.yml
 sed -i "s#PUSHGATEWAYSERVER#$PUSHGATEWAY_SERVER_IP#g" prometheus.yml
-sed "s#CONTROL_SERVER#http://$CONTROL_SERVER_IP#g" cachebench-dashboard.json > grafana_volume/dashboards/cachebench-dashboard.json
+sed "s#CONTROL_SERVER#http://CONTROL_SERVER_IP#g" cachebench-dashboard.json > grafana_volume/dashboards/cachebench-dashboard.json
 
 echo Starting pushgateway
 docker run --name pushgateway --restart=unless-stopped -d -p $PUSHGATEWAY_PORT:9091 \
@@ -41,13 +43,13 @@ docker run -d --link=prometheus --name=grafana -p $GRAFANA_PORT:3000 -v $PWD/gra
 echo Start browser at http://localhost:$GRAFANA_PORT/ and login with admin user, password admin
 
 echo Downloading PCM dashboard
-curl -o grafana_volume/dashboards/pcm-dashboard.json $PCM_SENSOR_SERVER_IP/dashboard/prometheus
+curl --noproxy '*' -o grafana_volume/dashboards/pcm-dashboard.json $PCM_SENSOR_SERVER_IP/dashboard/prometheus
 
 pkill -f cachebench_monitor.sh
 sh cachebench_monitor.sh &
 
 mkdir -p ../build
-docker run --privileged --name=cachebench_build -v $PWD/..:/opt/workspace:z -w /opt/workspace/ -e http_proxy=$http_proxy -e https_proxy=$https_proxy -it ghcr.io/pmem/cachelib:centos-8streams-devel sh /opt/workspace/grafana/build.sh
+docker run --privileged --name=cachebench_build -v /home/ichoraze/hmsdk/numactl:/opt/numactl:z -v $PWD/..:/opt/workspace:z -w /opt/workspace/ -e http_proxy=$http_proxy -e https_proxy=$https_proxy -it ghcr.io/pmem/cachelib:centos-8streams-devel sh /opt/workspace/grafana/build.sh
 
 python3 server.py -p $CONTROL_PORT -o "http://$GRAFNA_SERVER_IP"
 
