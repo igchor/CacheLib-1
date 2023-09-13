@@ -8,6 +8,9 @@ cmake ../cachelib -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt
 
 make install -j
 
+cp ../cachelib/cachebench/test_configs/hit_ratio/cdn/pop.json /opt/workspace/build
+cp ../cachelib/cachebench/test_configs/hit_ratio/cdn/sizes.json /opt/workspace/build
+
 file="$2"
 echo "Writing to $file"
 

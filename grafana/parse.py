@@ -14,6 +14,7 @@ def num(s):
 def main():
     args = sys.argv[1:]
     stats = args[0]
+    timestamp = args[1]
 
     with open(stats) as file:
        data = file.read()
@@ -42,8 +43,8 @@ def main():
                 value = num(value)
 
                 filename = os.path.basename(stats)
-                workload_id = filename[:filename.index("#")]
-                run_id = filename[filename.index("#") + 1:]
+                workload_id = filename
+                run_id = timestamp
                 print("{}{} {}".format(key, "{workload=\"" + workload_id + "\",run=\"" + run_id + "\"}", value))
 if __name__ == '__main__':
     main()

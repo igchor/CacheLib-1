@@ -8,12 +8,20 @@ echo "Using the '$host_public_ip' IP as the IP for 'pushgateway'"
 while true
 do
    curl --noproxy '*' -s -X PUT "http://$PUSHGATEWAY_SERVER_IP/api/v1/admin/wipe"
-   ls $PWD/../stats/ | while read -r filename
+
+   timestamp=$(cat $PWD/../stats/timestamp)
+
+   if [ -z "$timestamp" ]; then
+      sleep 1
+      continue 
+   fi
+
+   find $PWD/../stats/ -type f | while read -r filename
    do
       if [ ! -z "$filename" ]
       then
-         file="$PWD/../stats/$filename"
-         python parse.py $file | \
+         echo $filename
+         python parse.py $filename $timestamp | \
                   curl --noproxy '*' -s --data-binary @- "http://$PUSHGATEWAY_SERVER_IP/metrics/job/pushgateway/instance/$host_public_ip:$PUSHGATEWAY_PORT" &
       fi
    done

@@ -21,7 +21,7 @@ sleep 10
 echo "creating prometheus.yml for $PCM_SENSOR_SERVER_IP $PUSHGATEWAY_SERVER_IP";
 sed "s#PCMSENSORSERVER#$PCM_SENSOR_SERVER_IP#g" prometheus.yml.template > prometheus.yml
 sed -i "s#PUSHGATEWAYSERVER#$PUSHGATEWAY_SERVER_IP#g" prometheus.yml
-sed "s#CONTROL_SERVER#http://CONTROL_SERVER_IP#g" cachebench-dashboard.json > grafana_volume/dashboards/cachebench-dashboard.json
+sed "s#CONTROL_SERVER#http://$CONTROL_SERVER_IP#g" cachebench-dashboard.json > grafana_volume/dashboards/cachebench-dashboard.json
 
 echo Starting pushgateway
 docker run --name pushgateway --restart=unless-stopped -d -p $PUSHGATEWAY_PORT:9091 \
@@ -50,6 +50,21 @@ sh cachebench_monitor.sh &
 
 mkdir -p ../build
 docker run --privileged --name=cachebench_build -v /home/ichoraze/hmsdk/numactl:/opt/numactl:z -v $PWD/..:/opt/workspace:z -w /opt/workspace/ -e http_proxy=$http_proxy -e https_proxy=$https_proxy -it ghcr.io/pmem/cachelib:centos-8streams-devel sh /opt/workspace/grafana/build.sh
+
+sh stop_workload.sh
+
+docker run -d --privileged --name=cachebench_1 -v /tmp/dram:/tmp -v $PWD/..:/opt/workspace:z -w /opt/workspace/ -e http_proxy=$http_proxy -e https_proxy=$https_proxy -it ghcr.io/pmem/cachelib:centos-8streams-devel sh /opt/workspace/grafana/run_workload_dram.sh /opt/test_configs/small_moving_bg.json small_moving#dram
+docker run -d --privileged --name=cachebench_2 -v /tmp/intel:/tmp -v $PWD/..:/opt/workspace:z -w /opt/workspace/ -e http_proxy=$http_proxy -e https_proxy=$https_proxy -it ghcr.io/pmem/cachelib:centos-8streams-devel sh /opt/workspace/grafana/run_workload_intel.sh /opt/test_configs/small_moving_bg.json small_movingg#intel
+
+docker run -d --privileged --name=cachebench_3 -v /tmp/dram:/tmp -v $PWD/..:/opt/workspace:z -w /opt/workspace/ -e http_proxy=$http_proxy -e https_proxy=$https_proxy -it ghcr.io/pmem/cachelib:centos-8streams-devel sh /opt/workspace/grafana/run_workload_dram.sh /opt/test_configs/simple_test.json simple_test#dram
+docker run -d --privileged --name=cachebench_4 -v /tmp/intel:/tmp -v $PWD/..:/opt/workspace:z -w /opt/workspace/ -e http_proxy=$http_proxy -e https_proxy=$https_proxy -it ghcr.io/pmem/cachelib:centos-8streams-devel sh /opt/workspace/grafana/run_workload_intel.sh /opt/test_configs/simple_test.json simple_test#intel
+
+sleep 20
+
+docker pause cachebench_1
+docker pause cachebench_2
+docker pause cachebench_3
+docker pause cachebench_4
 
 python3 server.py -p $CONTROL_PORT -o "http://$GRAFNA_SERVER_IP"
 
