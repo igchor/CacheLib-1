@@ -19,7 +19,7 @@ def main():
     with open(stats) as file:
        data = file.read()
 
-    blocks = data.split("\n\n")
+    blocks = data.split("== Allocator Stats ==")
     output = []
     blocks = blocks[-2:-1]
 
